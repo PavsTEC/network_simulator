@@ -14,36 +14,54 @@ El programa crea:
 - **Máquina B**: Receptor que recibe datos
 - **Simulador**: Coordina toda la comunicación
 
-### 2. Flujo del Programa
+### 2. Program Flow
 
 ```mermaid
 flowchart TD
-    A[Máquina A inicia protocolo] --> B[NetworkLayer crea packet]
-    B --> C[Protocolo encapsula en frame]
-    C --> D[PhysicalLayer transmite]
-    D --> E{¿Frame se corrompe?}
-    E -->|Sí| F[Máquina B recibe cksum_err]
-    E -->|No| G[Máquina B recibe frame_arrival]
-    F --> H[Protocolo decide qué hacer]
-    G --> I[Entrega packet a aplicación]
-    H --> J[Protocolo programa próximos eventos]
-    I --> J
-    J --> K{¿Más datos?}
-    K -->|Sí| B
-    K -->|No| L[Simulación termina]
+    A[Simulator starts] --> B[Initialize protocols]
+    B --> C[Protocol schedules first events]
+    C --> D[Simulator processes next event by timestamp]
+    D --> E{Event type?}
+
+    E -->|network_layer_ready| F[Protocol creates packet]
+    F --> G[Protocol creates frame]
+    G --> H[PhysicalLayer sends frame]
+    H --> I{Frame corrupted?}
+    I -->|Yes| J[Schedule cksum_err event]
+    I -->|No| K[Schedule frame_arrival event]
+
+    E -->|frame_arrival| L[Protocol handles valid frame]
+    L --> M[Deliver packet to application]
+
+    E -->|cksum_err| N[Protocol handles corrupted frame]
+    N --> O[Protocol decides action]
+
+    E -->|timeout events| P[Protocol handles timeout]
+    P --> Q[Protocol decides action]
+
+    J --> R[Continue simulation]
+    K --> R
+    M --> S[Protocol may schedule more events]
+    O --> S
+    Q --> S
+    S --> R
+
+    R --> T{More events & time < 10s?}
+    T -->|Yes| D
+    T -->|No| U[Simulation ends]
 ```
 
-#### Flujo General (independiente del protocolo):
-1. **Simulador** inicializa las máquinas y sus protocolos
-2. **Protocolo** programa sus primeros eventos según su lógica específica
-3. **Simulador** procesa eventos cronológicamente:
-   - `network_layer_ready` → protocolo puede enviar datos
-   - `frame_arrival` → llegó frame válido al receptor
-   - `cksum_err` → llegó frame corrupto al receptor
-   - `timeout` / `ack_timeout` → manejo de timeouts (según protocolo)
-4. **Cada protocolo** decide cómo reaccionar a cada evento
-5. **PhysicalLayer** siempre aplica errores y retardos realistas
-6. **Proceso se repite** hasta que se cumple condición de parada
+#### General Flow (protocol-independent):
+1. **Simulator** initializes machines and their protocols
+2. **Protocol** schedules initial events based on its specific logic
+3. **Simulator** processes events chronologically:
+   - `network_layer_ready` → protocol can send data
+   - `frame_arrival` → valid frame arrived at receiver
+   - `cksum_err` → corrupted frame arrived at receiver
+   - `timeout` / `ack_timeout` → timeout handling (protocol-dependent)
+4. **Each protocol** decides how to react to each event
+5. **PhysicalLayer** always applies realistic errors and delays
+6. **Process repeats** until stop condition is met
 
 ### 3. Sistema de Eventos
 
@@ -73,23 +91,23 @@ sim.set_global_error_rate(0.2)    # 20% de frames se corrompen
 sim.set_error_rate("A", 0.05)     # Máquina A: solo 5% errores
 ```
 
-## Arquitectura del Sistema
+## System Architecture
 
 ```mermaid
 graph TB
-    subgraph "🎮 Simulador"
-        SIM[Simulator<br/>Coordina todo]
-        ES[EventScheduler<br/>Cola de eventos]
+    subgraph "🎮 Simulator"
+        SIM[Simulator<br/>Coordinates everything]
+        ES[EventScheduler<br/>Event queue]
     end
 
-    subgraph "🔄 Protocolos Intercambiables"
-        BP[BaseProtocol<br/>Clase base]
+    subgraph "🔄 Interchangeable Protocols"
+        BP[BaseProtocol<br/>Base class]
         PROT[Utopia • Stop&Wait • GoBackN<br/>SelectiveRepeat • etc.]
     end
 
-    subgraph "📡 Capas de Red"
-        NL[NetworkLayer<br/>Maneja packets]
-        PL[PhysicalLayer<br/>Simula errores]
+    subgraph "📡 Network Layers"
+        NL[NetworkLayer<br/>Handles packets]
+        PL[PhysicalLayer<br/>Simulates errors]
     end
 
     SIM --> ES
