@@ -18,37 +18,37 @@ El programa crea:
 
 ```mermaid
 flowchart TD
-    A[Simulator starts] --> B[Initialize protocols]
-    B --> C[Protocol schedules first events]
-    C --> D[Simulator processes next event by timestamp]
+    A[Start] --> B[Init protocols]
+    B --> C[Schedule events]
+    C --> D[Get next event]
     D --> E{Event type?}
 
-    E -->|network_layer_ready| F[Protocol creates packet]
-    F --> G[Protocol creates frame]
-    G --> H[PhysicalLayer sends frame]
-    H --> I{Frame corrupted?}
-    I -->|Yes| J[Schedule cksum_err event]
-    I -->|No| K[Schedule frame_arrival event]
+    E -->|network_ready| F[Create packet]
+    F --> G[Create frame]
+    G --> H[Send frame]
+    H --> I{Corrupted?}
+    I -->|Yes| J[Schedule cksum_err]
+    I -->|No| K[Schedule arrival]
 
-    E -->|frame_arrival| L[Protocol handles valid frame]
-    L --> M[Deliver packet to application]
+    E -->|frame_arrival| L[Handle valid frame]
+    L --> M[Deliver packet]
 
-    E -->|cksum_err| N[Protocol handles corrupted frame]
-    N --> O[Protocol decides action]
+    E -->|cksum_err| N[Handle corruption]
+    N --> O[Protocol action]
 
-    E -->|timeout events| P[Protocol handles timeout]
-    P --> Q[Protocol decides action]
+    E -->|timeout| P[Handle timeout]
+    P --> Q[Protocol action]
 
-    J --> R[Continue simulation]
+    J --> R[Continue]
     K --> R
-    M --> S[Protocol may schedule more events]
+    M --> S[Schedule more events]
     O --> S
     Q --> S
     S --> R
 
-    R --> T{More events & time < 10s?}
+    R --> T{More events?}
     T -->|Yes| D
-    T -->|No| U[Simulation ends]
+    T -->|No| U[End]
 ```
 
 #### General Flow (protocol-independent):
@@ -96,18 +96,18 @@ sim.set_error_rate("A", 0.05)     # Máquina A: solo 5% errores
 ```mermaid
 graph TB
     subgraph "🎮 Simulator"
-        SIM[Simulator<br/>Coordinates everything]
-        ES[EventScheduler<br/>Event queue]
+        SIM[Simulator]
+        ES[EventScheduler]
     end
 
-    subgraph "🔄 Interchangeable Protocols"
-        BP[BaseProtocol<br/>Base class]
-        PROT[Utopia • Stop&Wait • GoBackN<br/>SelectiveRepeat • etc.]
+    subgraph "🔄 Protocols"
+        BP[BaseProtocol]
+        PROT[Utopia • Stop&Wait<br/>GoBackN • etc.]
     end
 
     subgraph "📡 Network Layers"
-        NL[NetworkLayer<br/>Handles packets]
-        PL[PhysicalLayer<br/>Simulates errors]
+        NL[NetworkLayer]
+        PL[PhysicalLayer]
     end
 
     SIM --> ES
