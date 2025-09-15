@@ -16,50 +16,46 @@ El programa crea:
 
 ### 2. Flujo del Programa
 
-```plantuml
-@startuml
-!define RECTANGLE class
+```mermaid
+sequenceDiagram
+    participant A as Máquina A<br/>(Emisor)
+    participant PA as Protocol<br/>(Utopia/Stop&Wait/etc)
+    participant NLA as NetworkLayer A
+    participant PLA as PhysicalLayer A
+    participant NET as Canal de Red<br/>(con errores)
+    participant PLB as PhysicalLayer B
+    participant PB as Protocol B
+    participant NLB as NetworkLayer B
+    participant B as Máquina B<br/>(Receptor)
 
-participant "Máquina A\n(Emisor)" as A
-participant "Protocol\n(Utopia/Stop&Wait/etc)" as PA
-participant "NetworkLayer A" as NLA
-participant "PhysicalLayer A" as PLA
-participant "Canal de Red\n(con errores)" as NET
-participant "PhysicalLayer B" as PLB
-participant "Protocol B" as PB
-participant "NetworkLayer B" as NLB
-participant "Máquina B\n(Receptor)" as B
+    Note over A,B: Simulación por Eventos Discretos
 
-note over A, B: Simulación por Eventos Discretos
+    A->>PA: start_protocol()
+    PA->>PA: programa event "network_layer_ready"
 
-A -> PA: start_protocol()
-PA -> PA: programa event "network_layer_ready"
+    loop Cada segundo
+        PA->>NLA: has_data_ready()
+        NLA->>PA: True
+        PA->>NLA: get_packet()
+        NLA->>PA: Packet("Data_A_1")
+        PA->>PA: crear Frame con packet
+        PA->>PLA: send_frame(frame, "B")
 
-loop Cada segundo
-    PA -> NLA: has_data_ready()
-    NLA -> PA: True
-    PA -> NLA: get_packet()
-    NLA -> PA: Packet("Data_A_1")
-    PA -> PA: crear Frame con packet
-    PA -> PLA: send_frame(frame, "B")
+        PLA->>NET: transmitir frame
+        Note over NET: Posible corrupción<br/>(según tasa de errores)
+        NET->>PLB: frame + retardo
 
-    PLA -> NET: transmitir frame
-    note over NET: Posible corrupción\n(según tasa de errores)
-    NET -> PLB: frame + retardo
+        alt Frame válido
+            PLB->>PB: event "frame_arrival"
+            PB->>NLB: deliver_packet()
+            NLB->>B: entregar a aplicación
+        else Frame corrupto
+            PLB->>PB: event "cksum_err"
+            PB->>PB: descartar frame
+        end
 
-    alt Frame válido
-        PLB -> PB: event "frame_arrival"
-        PB -> NLB: deliver_packet()
-        NLB -> B: entregar a aplicación
-    else Frame corrupto
-        PLB -> PB: event "cksum_err"
-        PB -> PB: descartar frame
+        PA->>PA: programar próximo envío
     end
-
-    PA -> PA: programar próximo envío
-end
-
-@enduml
 ```
 
 #### Paso a paso:
@@ -102,61 +98,59 @@ sim.set_error_rate("A", 0.05)     # Máquina A: solo 5% errores
 
 ## Arquitectura del Sistema
 
-```plantuml
-@startuml
-!theme plain
+```mermaid
+graph TD
+    %% Subgrafos principales
+    subgraph Simulador
+        SIM[Simulator]
+        ES[EventScheduler]
+        MA[Machine A]
+        MB[Machine B]
+    end
 
-package "Simulador" {
-  [Simulator] as SIM
-  [EventScheduler] as ES
-  [Machine A] as MA
-  [Machine B] as MB
-}
+    subgraph Protocolos
+        BP[BaseProtocol]
+        UP[UtopiaProtocol]
+        SW[Stop&Wait]
+        GBN[GoBackN]
+        SR[SelectiveRepeat]
+        OTHER[... otros]
+    end
 
-package "Protocolo" {
-  [BaseProtocol] as BP
-  [UtopiaProtocol] as UP
-  [Stop&Wait] as SW
-  [GoBackN] as GBN
-  [SelectiveRepeat] as SR
-  [... otros] as OTHER
-}
+    subgraph Capas
+        NL[NetworkLayer]
+        PL[PhysicalLayer]
+    end
 
-package "Capas de Red" {
-  [NetworkLayer] as NL
-  [PhysicalLayer] as PL
-}
+    subgraph Modelos
+        EV[Event]
+        PKT[Packet]
+        FR[Frame]
+    end
 
-package "Modelos de Datos" {
-  [Event] as EV
-  [Packet] as PKT
-  [Frame] as FR
-}
+    %% Relaciones principales
+    SIM --> ES
+    SIM --> MA
+    SIM --> MB
 
-' Relaciones principales
-SIM --> ES : programa eventos
-SIM --> MA : controla
-SIM --> MB : controla
+    MA --> UP
+    MB --> UP
 
-MA --> UP : implementa
-MB --> UP : implementa
+    UP --> BP
+    SW --> BP
+    GBN --> BP
+    SR --> BP
+    OTHER --> BP
 
-UP --> BP : hereda de
-SW --> BP : hereda de
-GBN --> BP : hereda de
-SR --> BP : hereda de
-OTHER --> BP : hereda de
+    UP --> NL
+    UP --> PL
 
-UP --> NL : usa
-UP --> PL : usa
+    UP --> EV
+    NL --> PKT
+    PL --> FR
 
-UP --> EV : genera
-NL --> PKT : crea
-PL --> FR : maneja
-
-note right of BP : Cualquiera de los 6\nprotocolos puede\nsustituir a Utopia
-
-@enduml
+    %% Nota importante
+    BP -.-> NOTE["Cualquiera de los 6<br/>protocolos puede<br/>sustituir a Utopia"]
 ```
 
 ## Estructura de Archivos
