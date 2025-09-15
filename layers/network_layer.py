@@ -3,20 +3,28 @@ from models.packet import Packet
 class NetworkLayer:
     def __init__(self, machine_id: str):
         self.machine_id = machine_id
-        self.packet_counter = 0  # Contador de paquetes enviados
         self.received_packets = []  # Lista de paquetes recibidos
+        self.pending_data = []  # Cola de datos pendientes por enviar
 
     def has_data_ready(self) -> bool:
-        # Siempre hay datos disponibles para enviar
-        return True
+        # Solo tiene datos si hay algo en la cola pendiente
+        return len(self.pending_data) > 0
 
-    def get_packet(self) -> Packet:
-        # Genera un nuevo paquete con datos únicos
-        self.packet_counter += 1
-        data = f"Data_{self.machine_id}_{self.packet_counter}"
-        packet = Packet(data)
-        print(f"  [NetworkLayer-{self.machine_id}] Generado: {packet}")
-        return packet
+    def add_data_to_send(self, data: str, destination: str) -> None:
+        """Agrega datos específicos a la cola de envío con destino"""
+        message = {'data': data, 'destination': destination}
+        self.pending_data.append(message)
+        print(f"  [NetworkLayer-{self.machine_id}] Datos agregados a cola: '{data}' -> {destination}")
+
+    def get_packet(self) -> tuple:
+        # Toma el siguiente dato de la cola y retorna (packet, destination)
+        if self.pending_data:
+            message = self.pending_data.pop(0)
+            packet = Packet(message['data'])
+            destination = message['destination']
+            print(f"  [NetworkLayer-{self.machine_id}] Generado: {packet} -> {destination}")
+            return packet, destination
+        return None, None
 
     def deliver_packet(self, packet: Packet):
         # Entrega el paquete recibido a la aplicación
@@ -26,6 +34,6 @@ class NetworkLayer:
     def get_stats(self):
         # Retorna estadísticas de envío y recepción
         return {
-            'packets_sent': self.packet_counter,
-            'packets_received': len(self.received_packets)
+            'packets_received': len(self.received_packets),
+            'pending_packets': len(self.pending_data)
         }

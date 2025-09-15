@@ -4,57 +4,77 @@ from models.events import Event, EventType
 
 
 class PhysicalLayer:
-    def __init__(self, error_rate: float = 0.1, transmission_delay: float = 0.5):
-        # Validaciones de parámetros
+    """Capa física individual por máquina con configuración propia."""
+
+    def __init__(self, machine_id: str, error_rate: float = 0.1, transmission_delay: float = 0.5):
+        """Inicializa la capa física con configuración individual."""
+        # Validaciones
         if not (0.0 <= error_rate <= 1.0):
             raise ValueError("Error rate debe estar entre 0.0 y 1.0")
         if transmission_delay < 0:
             raise ValueError("Transmission delay debe ser no negativo")
 
-        self.error_rate = error_rate  # Probabilidad de corrupción
-        self.transmission_delay = transmission_delay  # Retardo de transmisión
-        self.frames_sent = 0  # Contador de frames enviados
-        self.frames_received = 0  # Contador de frames recibidos
-        self.corrupted_frames = 0  # Contador de frames corruptos
+        self.machine_id = machine_id
+        self.error_rate = error_rate
+        self.transmission_delay = transmission_delay
+        self.is_paused = False  # Para funcionalidad de pausa
+        self.frames_sent = 0
+        self.frames_received = 0
+        self.corrupted_frames = 0
 
     def send_frame(self, frame: Frame, destination_id: str, simulator) -> None:
-        # Validaciones de entrada
-        if not frame:
-            raise ValueError("Frame no puede ser None")
-        if not destination_id.strip():
-            raise ValueError("Destination ID no puede estar vacío")
+        """Envía un frame con posible corrupción y retardo."""
+        if self.is_paused:
+            print(f"  [PhysicalLayer-{self.machine_id}] Transmisión pausada")
+            return
 
         self.frames_sent += 1
-        print(f"  [PhysicalLayer] Enviando {frame} hacia {destination_id}")
+        print(f"  [PhysicalLayer-{self.machine_id}] Enviando {frame} hacia {destination_id}")
 
-        # Simula corrupción según tasa de errores
+        # Simula corrupción según tasa de errores (PhysicalLayer solo marca)
         if random.random() < self.error_rate:
-            frame.corrupt_frame()
-            self.corrupted_frames += 1
-            print(f"  [PhysicalLayer] ¡Frame corrupto durante transmisión!")
+            frame.corrupted_by_physical = True
+            print(f"  [PhysicalLayer-{self.machine_id}] ¡Frame corrupto durante transmisión!")
 
         # Calcula tiempo de llegada con retardo
         arrival_time = simulator.get_current_time() + self.transmission_delay
 
-        # Crea evento según estado del frame
-        if frame.is_valid():
-            event = Event(EventType.FRAME_ARRIVAL, arrival_time, destination_id, frame)
-        else:
-            event = Event(EventType.CKSUM_ERR, arrival_time, destination_id, frame)
+        # Siempre envía como FRAME_ARRIVAL - DataLinkLayer verificará checksum
+        event = Event(EventType.FRAME_ARRIVAL, arrival_time, destination_id, frame)
 
         simulator.schedule_event(event)
 
-    def set_error_rate(self, new_error_rate: float) -> None:
-        # Actualiza la tasa de errores con validación
-        if not (0.0 <= new_error_rate <= 1.0):
-            raise ValueError("La tasa de errores debe estar entre 0.0 y 1.0")
+    def set_error_rate(self, error_rate: float) -> None:
+        """Configura la tasa de errores para esta máquina."""
+        if not (0.0 <= error_rate <= 1.0):
+            raise ValueError("Error rate debe estar entre 0.0 y 1.0")
+        self.error_rate = error_rate
+        print(f"  [PhysicalLayer-{self.machine_id}] Tasa de errores actualizada a: {error_rate}")
 
-        self.error_rate = new_error_rate
-        print(f"  [PhysicalLayer] Tasa de errores actualizada a: {self.error_rate}")
+    def set_transmission_delay(self, delay: float) -> None:
+        """Configura el retardo de transmisión para esta máquina."""
+        if delay < 0:
+            raise ValueError("Transmission delay debe ser no negativo")
+        self.transmission_delay = delay
+        print(f"  [PhysicalLayer-{self.machine_id}] Retardo actualizado a: {delay}s")
+
+    def pause(self) -> None:
+        """Pausa las transmisiones de esta máquina."""
+        self.is_paused = True
+        print(f"  [PhysicalLayer-{self.machine_id}] Transmisión pausada")
+
+    def resume(self) -> None:
+        """Reanuda las transmisiones de esta máquina."""
+        self.is_paused = False
+        print(f"  [PhysicalLayer-{self.machine_id}] Transmisión reanudada")
 
     def get_error_rate(self) -> float:
-        # Retorna la tasa de errores actual
+        """Obtiene la tasa de errores actual."""
         return self.error_rate
+
+    def get_transmission_delay(self) -> float:
+        """Obtiene el retardo de transmisión actual."""
+        return self.transmission_delay
 
     def get_stats(self):
         # Calcula estadísticas de transmisión

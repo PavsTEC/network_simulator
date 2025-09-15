@@ -1,37 +1,101 @@
 """
-Clase Machine simplificada que representa una máquina en la simulación.
+Clase Machine - coordinador principal que maneja todas las capas de red.
 """
 
-from protocols.base_protocol import BaseProtocol
-from models.events import Event
+from layers.network_layer import NetworkLayer
+from layers.data_link_layer import DataLinkLayer
+from layers.physical_layer import PhysicalLayer
+from models.events import Event, EventType
 
 
 class Machine:
-    """Representa una máquina en la red que ejecuta un protocolo específico."""
+    """Máquina coordinadora que maneja todas las capas de red."""
 
-    def __init__(self, machine_id: str, protocol: BaseProtocol):
-        """Inicializa una nueva máquina."""
+    def __init__(self, machine_id: str, protocol_class, error_rate: float = 0.1,
+                 transmission_delay: float = 0.5):
+        """Inicializa la máquina con todas sus capas."""
         self.machine_id = machine_id
-        self.protocol = protocol
+
+        # Crear capas independientes
+        self.network_layer = NetworkLayer(machine_id)
+        self.physical_layer = PhysicalLayer(machine_id, error_rate, transmission_delay)
+
+        # Crear protocolo independiente
+        self.protocol = protocol_class(machine_id)
+
+        # Crear DataLinkLayer con el protocolo
+        self.data_link_layer = DataLinkLayer(machine_id, self.protocol)
 
     def handle_event(self, event: Event, simulator) -> None:
-        """Maneja un evento dirigido a esta máquina."""
-        print(f"[Machine-{self.machine_id}] Iniciando máquina...")
-        self.protocol.handle_event(event, simulator)
+        """Enruta eventos a la capa apropiada."""
+        print(f"[Machine-{self.machine_id}] Procesando evento: {event.event_type}")
+
+        if event.event_type == EventType.FRAME_ARRIVAL:
+            # Frame válido -> DataLinkLayer maneja
+            self.data_link_layer.handle_frame_arrival(event.data, simulator)
+
+
+        elif event.event_type == EventType.NETWORK_LAYER_READY:
+            # NetworkLayer tiene datos -> coordinar con DataLinkLayer
+            self.data_link_layer.handle_network_layer_ready(self.network_layer, simulator)
+
+
+        elif event.event_type == "DELIVER_PACKET":
+            # Entregar paquete a NetworkLayer
+            self.network_layer.deliver_packet(event.data)
+
+        elif event.event_type == "SEND_FRAME":
+            # Enviar frame a través de PhysicalLayer (directo, sin double delay)
+            frame_data = event.data
+            self.physical_layer.send_frame(frame_data['frame'], frame_data['destination'], simulator)
+
+        else:
+            print(f"[Machine-{self.machine_id}] Evento no reconocido: {event.event_type}")
 
     def start(self, simulator) -> None:
-        """Inicia la máquina y su protocolo."""
+        """Inicia la máquina."""
         print(f"[Machine-{self.machine_id}] Iniciando máquina...")
-        self.protocol.start_protocol(simulator)
 
-    def set_error_rate(self, error_rate: float) -> bool:
-        """Configura la tasa de errores de la capa física."""
-        return self.protocol.set_error_rate(error_rate)
+        # Si NetworkLayer tiene datos iniciales, programar evento
+        if self.network_layer.has_data_ready():
+            event = Event(EventType.NETWORK_LAYER_READY,
+                         simulator.get_current_time() + 0.1,
+                         self.machine_id)
+            simulator.schedule_event(event)
 
-    def get_error_rate(self):
-        """Obtiene la tasa de errores actual de la capa física."""
-        return self.protocol.get_error_rate()
+    # Configuración individual por máquina
+    def set_error_rate(self, error_rate: float) -> None:
+        """Configura la tasa de errores de esta máquina."""
+        self.physical_layer.set_error_rate(error_rate)
 
-    def get_stats(self):
-        """Obtiene las estadísticas de la máquina."""
-        return self.protocol.get_stats()
+    def set_transmission_delay(self, delay: float) -> None:
+        """Configura el retardo de transmisión de esta máquina."""
+        self.physical_layer.set_transmission_delay(delay)
+
+    def get_error_rate(self) -> float:
+        """Obtiene la tasa de errores de esta máquina."""
+        return self.physical_layer.get_error_rate()
+
+    def get_transmission_delay(self) -> float:
+        """Obtiene el retardo de transmisión de esta máquina."""
+        return self.physical_layer.get_transmission_delay()
+
+    # Funcionalidad de pausa por máquina
+    def pause(self) -> None:
+        """Pausa las transmisiones de esta máquina."""
+        self.physical_layer.pause()
+
+    def resume(self) -> None:
+        """Reanuda las transmisiones de esta máquina."""
+        self.physical_layer.resume()
+
+    def get_stats(self) -> dict:
+        """Obtiene estadísticas de la máquina."""
+        return {
+            'machine_id': self.machine_id,
+            'frames_sent': getattr(self.physical_layer, 'frames_sent', 0),
+            'frames_received': getattr(self.physical_layer, 'frames_received', 0),
+            'error_rate': self.physical_layer.get_error_rate(),
+            'transmission_delay': self.physical_layer.get_transmission_delay()
+        }
+

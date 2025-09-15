@@ -12,16 +12,10 @@ class EventType(Enum):
 
 class Event:
     def __init__(self, event_type: EventType, timestamp: float, machine_id: str, data = None):
-        # Validaciones básicas
-        if timestamp < 0:
-            raise ValueError("Timestamp debe ser no negativo")
-        if not machine_id.strip():
-            raise ValueError("Machine ID no puede estar vacío")
-
         self.event_type = event_type
-        self.timestamp = timestamp  # Momento en que ocurre el evento
-        self.machine_id = machine_id  # Máquina destino
-        self.data = data  # Datos adicionales del evento
+        self.timestamp = timestamp
+        self.machine_id = machine_id
+        self.data = data
 
     def __lt__(self, other: 'Event') -> bool:
         # Comparación para ordenar eventos por tiempo

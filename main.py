@@ -1,3 +1,4 @@
+import time
 from simulation.simulator import Simulator
 from protocols.utopia import UtopiaProtocol
 
@@ -9,35 +10,48 @@ def main():
     # Crear simulador principal
     sim = Simulator()
 
-    # Crear máquinas con protocolo Utopia (A=emisor, B=receptor)
-    machine_a = UtopiaProtocol("A")
-    machine_b = UtopiaProtocol("B")
+    # Registrar máquinas para protocolo Utopia
+    sim.add_machine("A", UtopiaProtocol, error_rate=0.0, transmission_delay=3.0)
+    sim.add_machine("B", UtopiaProtocol, error_rate=0.0, transmission_delay=2.0)
 
-    # Registrar máquinas en el simulador
-    sim.add_machine("A", machine_a)
-    sim.add_machine("B", machine_b)
+    # Mostrar configuración
+    print(f"\nConfiguración:")
+    print(f"  Máquina A: error_rate={sim.get_machine_error_rate('A')}, delay={sim.get_machine_transmission_delay('A')}s")
+    print(f"  Máquina B: error_rate={sim.get_machine_error_rate('B')}, delay={sim.get_machine_transmission_delay('B')}s")
 
-    # Mostrar configuración inicial de errores
-    print(f"\nConfiguración inicial de tasas de errores:")
-    print(f"Máquina A: {sim.get_error_rate('A')}")
-    print(f"Máquina B: {sim.get_error_rate('B')}")
+    print(f"\nIniciando envío del abecedario: A -> B (delay=1.5s entre letras)")
+    print("Presiona Ctrl+C para detener...")
 
-    # Configurar tasas de errores
-    print(f"\nConfigurando tasa de errores global a 0.2...")
-    sim.set_global_error_rate(0.2)
+    # Inicializar el simulador una sola vez
+    sim.start_simulation()
 
-    print(f"\nConfigurando tasa de errores para máquina A a 0.05...")
-    sim.set_error_rate("A", 0.05)
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    index = 0
 
-    # Mostrar configuración final
-    print(f"\nConfiguración final de tasas de errores:")
-    print(f"Máquina A: {sim.get_error_rate('A')}")
-    print(f"Máquina B: {sim.get_error_rate('B')}")
+    try:
+        while True:
+            letter = alphabet[index % len(alphabet)]
 
-    # Ejecutar simulación completa
-    sim.run_simulation()
+            # Enviar la letra
+            success = sim.send_data("A", "B", letter)
 
-    print("\nSimulación completada!")
+            if success:
+                print(f"\n[Main] Enviando letra '{letter}' ({index + 1})")
+
+                # Procesar eventos generados por este envío
+                sim.run_simulation()
+
+                index += 1
+            else:
+                print(f"[Main] Error enviando letra '{letter}'")
+
+            time.sleep(1.5)  # 1.5 segundos entre letras
+
+    except KeyboardInterrupt:
+        print(f"\n[Main] Envío del abecedario detenido por usuario")
+    finally:
+        sim.stop_simulation()
+        print("\nSimulación completada!")
 
 
 if __name__ == "__main__":
