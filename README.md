@@ -17,56 +17,33 @@ El programa crea:
 ### 2. Flujo del Programa
 
 ```mermaid
-sequenceDiagram
-    participant A as Máquina A<br/>(Emisor)
-    participant PA as Protocol<br/>(Utopia/Stop&Wait/etc)
-    participant NLA as NetworkLayer A
-    participant PLA as PhysicalLayer A
-    participant NET as Canal de Red<br/>(con errores)
-    participant PLB as PhysicalLayer B
-    participant PB as Protocol B
-    participant NLB as NetworkLayer B
-    participant B as Máquina B<br/>(Receptor)
-
-    Note over A,B: Simulación por Eventos Discretos
-
-    A->>PA: start_protocol()
-    PA->>PA: programa event "network_layer_ready"
-
-    loop Cada segundo
-        PA->>NLA: has_data_ready()
-        NLA->>PA: True
-        PA->>NLA: get_packet()
-        NLA->>PA: Packet("Data_A_1")
-        PA->>PA: crear Frame con packet
-        PA->>PLA: send_frame(frame, "B")
-
-        PLA->>NET: transmitir frame
-        Note over NET: Posible corrupción<br/>(según tasa de errores)
-        NET->>PLB: frame + retardo
-
-        alt Frame válido
-            PLB->>PB: event "frame_arrival"
-            PB->>NLB: deliver_packet()
-            NLB->>B: entregar a aplicación
-        else Frame corrupto
-            PLB->>PB: event "cksum_err"
-            PB->>PB: descartar frame
-        end
-
-        PA->>PA: programar próximo envío
-    end
+flowchart TD
+    A[Máquina A inicia protocolo] --> B[NetworkLayer crea packet]
+    B --> C[Protocolo encapsula en frame]
+    C --> D[PhysicalLayer transmite]
+    D --> E{¿Frame se corrompe?}
+    E -->|Sí| F[Máquina B recibe cksum_err]
+    E -->|No| G[Máquina B recibe frame_arrival]
+    F --> H[Protocolo decide qué hacer]
+    G --> I[Entrega packet a aplicación]
+    H --> J[Protocolo programa próximos eventos]
+    I --> J
+    J --> K{¿Más datos?}
+    K -->|Sí| B
+    K -->|No| L[Simulación termina]
 ```
 
-#### Paso a paso:
-1. **Máquina A** pide datos a su NetworkLayer
-2. **NetworkLayer** crea un paquete con texto único
-3. **Máquina A** mete el paquete en un Frame
-4. **PhysicalLayer** envía el frame (puede corromperse)
-5. **Máquina B** recibe el frame después de un retardo
-6. Si llegó bien → entrega a aplicación
-7. Si llegó corrupto → lo descarta
-8. **Máquina A** programa enviar otro frame en 1 segundo
+#### Flujo General (independiente del protocolo):
+1. **Simulador** inicializa las máquinas y sus protocolos
+2. **Protocolo** programa sus primeros eventos según su lógica específica
+3. **Simulador** procesa eventos cronológicamente:
+   - `network_layer_ready` → protocolo puede enviar datos
+   - `frame_arrival` → llegó frame válido al receptor
+   - `cksum_err` → llegó frame corrupto al receptor
+   - `timeout` / `ack_timeout` → manejo de timeouts (según protocolo)
+4. **Cada protocolo** decide cómo reaccionar a cada evento
+5. **PhysicalLayer** siempre aplica errores y retardos realistas
+6. **Proceso se repite** hasta que se cumple condición de parada
 
 ### 3. Sistema de Eventos
 
@@ -99,58 +76,27 @@ sim.set_error_rate("A", 0.05)     # Máquina A: solo 5% errores
 ## Arquitectura del Sistema
 
 ```mermaid
-graph TD
-    %% Subgrafos principales
-    subgraph Simulador
-        SIM[Simulator]
-        ES[EventScheduler]
-        MA[Machine A]
-        MB[Machine B]
+graph TB
+    subgraph "🎮 Simulador"
+        SIM[Simulator<br/>Coordina todo]
+        ES[EventScheduler<br/>Cola de eventos]
     end
 
-    subgraph Protocolos
-        BP[BaseProtocol]
-        UP[UtopiaProtocol]
-        SW[Stop&Wait]
-        GBN[GoBackN]
-        SR[SelectiveRepeat]
-        OTHER[... otros]
+    subgraph "🔄 Protocolos Intercambiables"
+        BP[BaseProtocol<br/>Clase base]
+        PROT[Utopia • Stop&Wait • GoBackN<br/>SelectiveRepeat • etc.]
     end
 
-    subgraph Capas
-        NL[NetworkLayer]
-        PL[PhysicalLayer]
+    subgraph "📡 Capas de Red"
+        NL[NetworkLayer<br/>Maneja packets]
+        PL[PhysicalLayer<br/>Simula errores]
     end
 
-    subgraph Modelos
-        EV[Event]
-        PKT[Packet]
-        FR[Frame]
-    end
-
-    %% Relaciones principales
     SIM --> ES
-    SIM --> MA
-    SIM --> MB
-
-    MA --> UP
-    MB --> UP
-
-    UP --> BP
-    SW --> BP
-    GBN --> BP
-    SR --> BP
-    OTHER --> BP
-
-    UP --> NL
-    UP --> PL
-
-    UP --> EV
-    NL --> PKT
-    PL --> FR
-
-    %% Nota importante
-    BP -.-> NOTE["Cualquiera de los 6<br/>protocolos puede<br/>sustituir a Utopia"]
+    SIM --> PROT
+    PROT --> BP
+    PROT --> NL
+    PROT --> PL
 ```
 
 ## Estructura de Archivos
