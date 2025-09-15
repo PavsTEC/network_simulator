@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Any, Optional
 
 
 class EventType(Enum):
@@ -12,7 +11,7 @@ class EventType(Enum):
 
 
 class Event:
-    def __init__(self, event_type: EventType, timestamp: float, machine_id: str, data: Optional[Any] = None):
+    def __init__(self, event_type: EventType, timestamp: float, machine_id: str, data = None):
         # Validaciones básicas
         if timestamp < 0:
             raise ValueError("Timestamp debe ser no negativo")

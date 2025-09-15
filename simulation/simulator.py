@@ -1,23 +1,19 @@
-from typing import Dict, TYPE_CHECKING
 from simulation.event_scheduler import EventScheduler
 from simulation.machine import Machine
 from models.events import Event
-
-if TYPE_CHECKING:
-    from protocols.base_protocol import BaseProtocol
 
 
 class Simulator:
     def __init__(self):
         self.event_scheduler = EventScheduler()  # Programador de eventos
-        self._machines: Dict[str, Machine] = {}  # Máquinas registradas
+        self._machines = {}  # Máquinas registradas
         self._current_time = 0.0  # Tiempo actual de simulación
         self._running = False  # Estado de ejecución
         self.max_simulation_time = 10.0  # Tiempo máximo de simulación
 
         print("[Simulator] Simulador inicializado")
 
-    def add_machine(self, machine_id: str, protocol: 'BaseProtocol') -> None:
+    def add_machine(self, machine_id: str, protocol) -> None:
         # Registra una nueva máquina con su protocolo
         machine = Machine(machine_id, protocol)
         self._machines[machine_id] = machine

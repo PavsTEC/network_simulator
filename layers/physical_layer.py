@@ -1,10 +1,6 @@
 import random
-from typing import Dict, Any, TYPE_CHECKING
 from models.frame import Frame
 from models.events import Event, EventType
-
-if TYPE_CHECKING:
-    from simulation.simulator import Simulator
 
 
 class PhysicalLayer:
@@ -21,7 +17,7 @@ class PhysicalLayer:
         self.frames_received = 0  # Contador de frames recibidos
         self.corrupted_frames = 0  # Contador de frames corruptos
 
-    def send_frame(self, frame: Frame, destination_id: str, simulator: 'Simulator') -> None:
+    def send_frame(self, frame: Frame, destination_id: str, simulator) -> None:
         # Validaciones de entrada
         if not frame:
             raise ValueError("Frame no puede ser None")
@@ -60,7 +56,7 @@ class PhysicalLayer:
         # Retorna la tasa de errores actual
         return self.error_rate
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self):
         # Calcula estadísticas de transmisión
         corruption_rate = (self.corrupted_frames / self.frames_sent * 100) if self.frames_sent > 0 else 0.0
 

@@ -1,4 +1,3 @@
-import time
 from models.packet import Packet
 
 class NetworkLayer:

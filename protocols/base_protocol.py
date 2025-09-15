@@ -1,11 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, TYPE_CHECKING
 from layers.network_layer import NetworkLayer
 from layers.physical_layer import PhysicalLayer
 from models.events import Event
-
-if TYPE_CHECKING:
-    from simulation.simulator import Simulator
 
 
 class BaseProtocol(ABC):
@@ -13,17 +9,17 @@ class BaseProtocol(ABC):
         self.machine_id = machine_id
         self.network_layer = NetworkLayer(machine_id)  # Capa de red para manejo de paquetes
         self.physical_layer = PhysicalLayer()  # Capa física para transmisión
-        self.state: Dict[str, Any] = {}  # Estado interno del protocolo
+        self.state = {}  # Estado interno del protocolo
         self.frames_sent = 0  # Contador de frames enviados
         self.frames_received = 0  # Contador de frames recibidos
 
     @abstractmethod
-    def handle_event(self, event: Event, simulator: 'Simulator') -> None:
+    def handle_event(self, event: Event, simulator) -> None:
         # Procesa eventos específicos del protocolo
         pass
 
     @abstractmethod
-    def start_protocol(self, simulator: 'Simulator') -> None:
+    def start_protocol(self, simulator) -> None:
         # Inicializa el protocolo y programa eventos iniciales
         pass
 
@@ -40,7 +36,7 @@ class BaseProtocol(ABC):
         # Obtiene la tasa de errores actual
         return self.physical_layer.get_error_rate()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self):
         # Recolecta estadísticas de todas las capas
         net_stats = self.network_layer.get_stats()
         phy_stats = self.physical_layer.get_stats()

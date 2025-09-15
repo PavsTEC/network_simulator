@@ -2,12 +2,8 @@
 Clase Machine simplificada que representa una máquina en la simulación.
 """
 
-from typing import Optional, TYPE_CHECKING
 from protocols.base_protocol import BaseProtocol
 from models.events import Event
-
-if TYPE_CHECKING:
-    from simulation.simulator import Simulator
 
 
 class Machine:
@@ -18,12 +14,12 @@ class Machine:
         self.machine_id = machine_id
         self.protocol = protocol
 
-    def handle_event(self, event: Event, simulator: 'Simulator') -> None:
+    def handle_event(self, event: Event, simulator) -> None:
         """Maneja un evento dirigido a esta máquina."""
         print(f"[Machine-{self.machine_id}] Iniciando máquina...")
         self.protocol.handle_event(event, simulator)
 
-    def start(self, simulator: 'Simulator') -> None:
+    def start(self, simulator) -> None:
         """Inicia la máquina y su protocolo."""
         print(f"[Machine-{self.machine_id}] Iniciando máquina...")
         self.protocol.start_protocol(simulator)
@@ -32,7 +28,7 @@ class Machine:
         """Configura la tasa de errores de la capa física."""
         return self.protocol.set_error_rate(error_rate)
 
-    def get_error_rate(self) -> Optional[float]:
+    def get_error_rate(self):
         """Obtiene la tasa de errores actual de la capa física."""
         return self.protocol.get_error_rate()
 

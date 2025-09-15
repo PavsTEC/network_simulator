@@ -1,17 +1,16 @@
 import heapq
-from typing import List, Optional
 from models.events import Event
 
 
 class EventScheduler:
     def __init__(self):
-        self._event_queue: List[Event] = []  # Cola de eventos ordenada por tiempo
+        self._event_queue = []  # Cola de eventos ordenada por tiempo
 
     def schedule_event(self, event: Event) -> None:
         # Agrega evento a la cola ordenada
         heapq.heappush(self._event_queue, event)
 
-    def get_next_event(self) -> Optional[Event]:
+    def get_next_event(self):
         # Obtiene el próximo evento cronológicamente
         return heapq.heappop(self._event_queue) if self._event_queue else None
 
@@ -19,7 +18,7 @@ class EventScheduler:
         # Verifica si hay eventos pendientes
         return bool(self._event_queue)
 
-    def peek_next_event(self) -> Optional[Event]:
+    def peek_next_event(self):
         # Ve el próximo evento sin removerlo
         return self._event_queue[0] if self._event_queue else None
 
