@@ -1,6 +1,6 @@
 # Simulador de Protocolos de Red
 
-Simulador educativo que muestra cómo las máquinas se comunican enviando datos a través de una red con errores.
+Simulador educativo que muestra cómo las máquinas se comunican enviando datos a través de una red con errores, usando un modelo de capas donde cada máquina coordina NetworkLayer, DataLinkLayer y PhysicalLayer.
 
 ## ¿Cómo Funciona?
 
@@ -10,58 +10,64 @@ python main.py
 ```
 
 El programa crea:
-- **Máquina A**: Emisor que envía datos
-- **Máquina B**: Receptor que recibe datos
-- **Simulador**: Coordina toda la comunicación
+- **Máquina A**: Máquina emisora que envía datos
+- **Máquina B**: Máquina receptora que recibe datos
+- **Simulador**: Maneja eventos y coordina la comunicación entre máquinas
 
 ### 2. Program Flow
 
 ```mermaid
 flowchart TD
-    A[Start] --> B[Init protocols]
-    B --> C[Schedule events]
-    C --> D[Get next event]
-    D --> E{Event type?}
+    A[Start] --> B[Simulator creates Machines]
+    B --> C[Machines initialize layers]
+    C --> D[Schedule initial events]
+    D --> E[Get next event]
+    E --> F{Event type?}
 
-    E -->|network_ready| F[Create packet]
-    F --> G[Create frame]
-    G --> H[Send frame]
-    H --> I{Corrupted?}
-    I -->|Yes| J[Schedule cksum_err]
-    I -->|No| K[Schedule arrival]
+    F -->|NETWORK_LAYER_READY| G[Machine routes to DataLinkLayer]
+    G --> H[Protocol creates Frame]
+    H --> I[Schedule SEND_FRAME event]
+    I --> J[PhysicalLayer sends]
+    J --> K{Corrupted during transmission?}
+    K -->|Yes| L[Schedule CKSUM_ERR event]
+    K -->|No| M[Schedule FRAME_ARRIVAL event]
 
-    E -->|frame_arrival| L[Handle valid frame]
-    L --> M[Deliver packet]
+    F -->|FRAME_ARRIVAL| N[DataLinkLayer verifies frame]
+    N --> O[Protocol processes valid frame]
+    O --> P[Schedule DELIVER_PACKET event]
 
-    E -->|cksum_err| N[Handle corruption]
-    N --> O[Protocol action]
+    F -->|CKSUM_ERR| Q[Protocol handles corruption]
+    Q --> R[Protocol-specific action]
 
-    E -->|timeout| P[Handle timeout]
-    P --> Q[Protocol action]
+    F -->|DELIVER_PACKET| S[NetworkLayer delivers packet]
 
-    J --> R[Continue]
-    K --> R
-    M --> S[Schedule more events]
-    O --> S
-    Q --> S
-    S --> R
+    F -->|SEND_FRAME| T[PhysicalLayer applies delays/errors]
 
-    R --> T{More events?}
-    T -->|Yes| D
-    T -->|No| U[End]
+    L --> U[Continue simulation]
+    M --> U
+    P --> U
+    R --> U
+    S --> U
+    T --> U
+
+    U --> V{More events in queue?}
+    V -->|Yes| E
+    V -->|No| W[End simulation]
 ```
 
 #### General Flow (protocol-independent):
-1. **Simulator** initializes machines and their protocols
-2. **Protocol** schedules initial events based on its specific logic
-3. **Simulator** processes events chronologically:
-   - `network_layer_ready` → protocol can send data
-   - `frame_arrival` → valid frame arrived at receiver
-   - `cksum_err` → corrupted frame arrived at receiver
-   - `timeout` / `ack_timeout` → timeout handling (protocol-dependent)
-4. **Each protocol** decides how to react to each event
-5. **PhysicalLayer** always applies realistic errors and delays
-6. **Process repeats** until stop condition is met
+1. **Simulator** creates machines and initializes their layers
+2. **EventScheduler** manages chronological event processing
+3. **Event types and their usage**:
+   - `NETWORK_LAYER_READY` → Machine has data to send, routes to DataLinkLayer
+   - `FRAME_ARRIVAL` → Valid frame received, DataLinkLayer processes with Protocol
+   - `CKSUM_ERR` → Corrupted frame received, Protocol handles error
+   - `DELIVER_PACKET` → Packet ready for delivery to NetworkLayer
+   - `SEND_FRAME` → Frame ready for transmission via PhysicalLayer
+4. **Machine** acts as event router, delegating to appropriate layers
+5. **DataLinkLayer** coordinates with Protocol for communication logic
+6. **PhysicalLayer** applies realistic transmission delays and errors
+7. **Process repeats** until event queue is empty
 
 ### 3. Sistema de Eventos
 
@@ -100,48 +106,123 @@ graph TB
         ES[EventScheduler]
     end
 
-    subgraph "🔄 Protocols"
-        BP[BaseProtocol]
-        PROT[Utopia • Stop&Wait<br/>GoBackN • etc.]
+    subgraph "🖥️ Machine A"
+        MA[Machine A]
+        NLA[NetworkLayer]
+        DLA[DataLinkLayer]
+        PLA[PhysicalLayer]
+        PROTA[Protocol]
     end
 
-    subgraph "📡 Network Layers"
-        NL[NetworkLayer]
-        PL[PhysicalLayer]
+    subgraph "🖥️ Machine B"
+        MB[Machine B]
+        NLB[NetworkLayer]
+        DLB[DataLinkLayer]
+        PLB[PhysicalLayer]
+        PROTB[Protocol]
     end
 
     SIM --> ES
-    SIM --> PROT
-    PROT --> BP
-    PROT --> NL
-    PROT --> PL
+    SIM --> MA
+    SIM --> MB
+
+    MA --> NLA
+    MA --> DLA
+    MA --> PLA
+    DLA --> PROTA
+
+    MB --> NLB
+    MB --> DLB
+    MB --> PLB
+    DLB --> PROTB
+```
+
+## Component Hierarchy
+
+```mermaid
+graph TD
+    subgraph "Simulator Level"
+        SIM[Simulator<br/>- Manages event queue<br/>- Coordinates machines]
+        ES[EventScheduler<br/>- Chronological event processing]
+    end
+
+    subgraph "Machine Level"
+        MA[Machine<br/>- Event router<br/>- Layer coordinator]
+    end
+
+    subgraph "Layer Level"
+        NL[NetworkLayer<br/>- Packet creation/delivery<br/>- Data management]
+        DL[DataLinkLayer<br/>- Frame verification<br/>- Protocol coordination]
+        PL[PhysicalLayer<br/>- Transmission simulation<br/>- Error injection]
+    end
+
+    subgraph "Protocol Level"
+        PROT[Protocol<br/>- Communication logic<br/>- Frame processing<br/>- Error handling]
+    end
+
+    SIM --> ES
+    SIM --> MA
+    MA --> NL
+    MA --> DL
+    MA --> PL
+    DL --> PROT
+
+    style SIM fill:#e1f5fe
+    style MA fill:#f3e5f5
+    style NL fill:#e8f5e8
+    style DL fill:#fff3e0
+    style PL fill:#fce4ec
+    style PROT fill:#f1f8e9
 ```
 
 ## Estructura de Archivos
 
 ```
-main.py           # Punto de entrada - configura y ejecuta
+main.py                    # Punto de entrada - configura y ejecuta simulación
 ├── simulation/
-│   ├── simulator.py      # Coordinador principal
+│   ├── simulator.py       # Coordinador principal del simulador
+│   ├── machine.py         # Máquina que coordina todas las capas
 │   └── event_scheduler.py # Cola de eventos ordenada por tiempo
 ├── protocols/
-│   └── utopia.py         # Protocolo simple: A envía, B recibe
+│   └── utopia.py          # Protocolo simple sin control de errores
 ├── layers/
-│   ├── network_layer.py  # Crea y entrega paquetes
-│   └── physical_layer.py # Envía frames, simula errores
+│   ├── network_layer.py   # Crea y entrega paquetes
+│   ├── data_link_layer.py # Coordina con protocolos y verifica frames
+│   └── physical_layer.py  # Transmisión con errores y retardos realistas
 └── models/
-    ├── packet.py         # Datos a enviar
-    ├── frame.py          # Envoltorio del packet
-    └── events.py         # Eventos del simulador
+    ├── packet.py          # Datos a transmitir
+    ├── frame.py           # Envoltorio del packet con metadatos
+    └── events.py          # Tipos de eventos del simulador
 ```
+
+## Relaciones de Componentes
+
+### ¿Quién Contiene a Quién?
+
+- **Simulator** ←→ contiene múltiples **Machines**
+- **Machine** ←→ administra **NetworkLayer**, **DataLinkLayer**, **PhysicalLayer**
+- **DataLinkLayer** ←→ contiene un **Protocol** específico
+- **NetworkLayer** ←→ crea y maneja **Packets**
+- **DataLinkLayer + Protocol** ←→ crean y procesan **Frames**
+- **PhysicalLayer** ←→ transmite **Frames** con errores/retardos
+- **EventScheduler** ←→ maneja cola de **Events**
+
+### Flujo de Responsabilidades
+
+1. **Simulator** coordina todo y maneja eventos
+2. **Machine** actúa como router de eventos hacia sus capas
+3. **DataLinkLayer** delega decisiones al **Protocol**
+4. **Protocol** decide toda la lógica de comunicación
+5. **PhysicalLayer** aplica condiciones realistas de red
 
 ## ¿Para Qué Sirve?
 
 Este simulador te ayuda a entender:
-- Cómo los datos viajan por una red
-- Por qué los protocolos necesitan manejar errores
+- Cómo las máquinas coordinan múltiples capas de red
+- Por qué los protocolos necesitan manejar errores y eventos
 - Cómo funciona la simulación por eventos discretos
 - La diferencia entre paquetes y frames
+- Cómo se delegan responsabilidades entre capas
 
 ## Ejecutar
 
