@@ -49,6 +49,11 @@ class Machine:
             frame_data = event.data
             self.physical_layer.send_frame(frame_data['frame'], frame_data['destination'], simulator)
 
+        elif event.event_type == EventType.TIMEOUT:
+            # Timeout del protocolo -> delegar al protocolo via DataLinkLayer
+            response = self.protocol.handle_timeout(simulator)
+            self.data_link_layer._execute_protocol_response(response, simulator)
+
         else:
             print(f"[Machine-{self.machine_id}] Evento no reconocido: {event.event_type}")
 
