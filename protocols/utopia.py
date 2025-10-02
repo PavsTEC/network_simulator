@@ -4,9 +4,10 @@ Solo lógica esencial: envío inmediato sin control.
 """
 
 from models.frame import Frame
+from protocols.protocol_interface import ProtocolInterface
 
 
-class UtopiaProtocol:
+class UtopiaProtocol(ProtocolInterface):
     """Protocolo Utopia - el más simple posible."""
 
     def __init__(self, machine_id: str):
@@ -45,3 +46,7 @@ class UtopiaProtocol:
         # Utopia: simplemente ignora frames corruptos (no hay errores según requerimientos)
         print(f"[Protocol-{self.machine_id}] Frame corrupto ignorado (Utopia)")
         return {'action': 'no_action'}
+    
+    def get_protocol_name(self) -> str:
+        """Obtiene el nombre del protocolo."""
+        return "Utopia"

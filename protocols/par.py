@@ -8,14 +8,15 @@ Protocolo PAR (Positive Acknowledgment with Retransmission)
 
 from models.frame import Frame
 from models.events import Event, EventType
+from protocols.protocol_interface import ProtocolInterface
 
 
-class PARProtocol:
+class PARProtocol(ProtocolInterface):
     """Protocolo PAR con ACK/NAK y timeout."""
 
     def __init__(self, machine_id: str):
         """Inicializa el protocolo PAR."""
-        self.machine_id = machine_id
+        super().__init__(machine_id)
         
         # Estado del protocolo
         self.seq_num = 0  # Número de secuencia actual (0 o 1)
@@ -62,7 +63,7 @@ class PARProtocol:
         
         return {'action': 'no_action'}
 
-    def handle_frame_arrival(self, frame: Frame) -> dict:
+    def handle_frame_arrival(self, frame) -> dict:
         """Decide qué hacer con un frame recibido."""
         
         if frame.type == "DATA":
@@ -115,7 +116,7 @@ class PARProtocol:
         
         return {'action': 'no_action'}
 
-    def handle_frame_corruption(self, frame: Frame) -> dict:
+    def handle_frame_corruption(self, frame) -> dict:
         """Decide qué hacer con un frame corrupto."""
         print(f"[PAR-{self.machine_id}] Frame corrupto recibido")
         
@@ -154,10 +155,15 @@ class PARProtocol:
 
     def get_stats(self) -> dict:
         """Retorna estadísticas del protocolo."""
-        return {
-            'protocol': 'PAR',
+        stats = super().get_stats()
+        stats.update({
             'current_seq': self.seq_num,
             'expected_seq': self.expected_seq,
             'waiting_for_ack': self.waiting_for_ack,
             'timeout_duration': self.timeout_duration
-        }
+        })
+        return stats
+
+    def get_protocol_name(self) -> str:
+        """Obtiene el nombre del protocolo."""
+        return "PAR"

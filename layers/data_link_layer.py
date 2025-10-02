@@ -29,8 +29,6 @@ class DataLinkLayer:
         if self._verify_frame_checksum(frame):
             # Frame válido - protocolo decide qué hacer
             response = self.protocol.handle_frame_arrival(frame)
-
-            # Ejecutar acción decidida por protocolo
             self._execute_protocol_response(response, simulator)
         else:
             # Frame corrupto - protocolo decide qué hacer
@@ -41,8 +39,6 @@ class DataLinkLayer:
         """Coordina datos de NetworkLayer con protocolo."""
         # Protocolo decide qué hacer
         response = self.protocol.handle_network_layer_ready(network_layer, self, simulator)
-
-        # Ejecutar acción decidida por protocolo
         self._execute_protocol_response(response, simulator)
 
     def _execute_protocol_response(self, response: dict, simulator) -> None:
@@ -90,6 +86,17 @@ class DataLinkLayer:
                          self.machine_id, {
                              'frame': nak_frame,
                              'destination': 'A'  # PAR: B siempre responde a A
+                         })
+            simulator.schedule_event(event)
+            
+        elif action == 'send_ack_only':
+            # Enviar solo ACK (sin entregar paquete - para frames duplicados)
+            ack_frame = Frame("ACK", 0, response['ack_seq'])
+            print(f"  [DataLink-{self.machine_id}] Enviando ACK seq={response['ack_seq']} (frame duplicado)")
+            event = Event("SEND_FRAME", simulator.get_current_time() + 0.1,
+                         self.machine_id, {
+                             'frame': ack_frame,
+                             'destination': 'A'
                          })
             simulator.schedule_event(event)
             
