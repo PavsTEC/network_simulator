@@ -26,7 +26,8 @@ def get_available_protocols() -> dict:
         'par',
         'stop_and_wait',
         'selective_repeat',
-        # Aquí se pueden agregar más protocolos: 'go_back_n', etc.
+        'sliding_window',
+        'go_back_n'
     ]
     
     for module_name in protocol_modules:
