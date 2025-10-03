@@ -100,6 +100,35 @@ class DataLinkLayer:
                          })
             simulator.schedule_event(event)
             
+        elif action == 'send_ack_individual':
+            # Enviar ACK individual (Selective Repeat)
+            ack_frame = Frame("ACK", 0, response['ack_seq'])
+            print(f"  [DataLink-{self.machine_id}] Enviando ACK individual seq={response['ack_seq']}")
+            event = Event("SEND_FRAME", simulator.get_current_time() + 0.1,
+                         self.machine_id, {
+                             'frame': ack_frame,
+                             'destination': self._get_other_machine_id()
+                         })
+            simulator.schedule_event(event)
+            
+        elif action == 'deliver_packets_and_send_ack':
+            # Entregar múltiples paquetes Y enviar ACK (Selective Repeat)
+            # 1. Entregar paquetes
+            for packet in response['packets']:
+                event = Event("DELIVER_PACKET", simulator.get_current_time(),
+                             self.machine_id, packet)
+                simulator.schedule_event(event)
+            
+            # 2. Enviar ACK
+            ack_frame = Frame("ACK", 0, response['ack_seq'])
+            print(f"  [DataLink-{self.machine_id}] Entregando {len(response['packets'])} paquetes y enviando ACK seq={response['ack_seq']}")
+            event = Event("SEND_FRAME", simulator.get_current_time() + 0.1,
+                         self.machine_id, {
+                             'frame': ack_frame,
+                             'destination': self._get_other_machine_id()
+                         })
+            simulator.schedule_event(event)
+            
         elif action == 'continue_sending':
             # Continuar enviando - programar siguiente dato si hay
             event = Event(EventType.NETWORK_LAYER_READY,
@@ -112,6 +141,11 @@ class DataLinkLayer:
             pass
             
         # 'no_action' no requiere procesamiento
+
+    def _get_other_machine_id(self) -> str:
+        """Obtiene el ID de la otra máquina (para comunicación bidireccional)."""
+        # Para protocolos bidireccionales, asumimos máquinas A y B
+        return 'B' if self.machine_id == 'A' else 'A'
 
     def _verify_frame_checksum(self, frame: Frame) -> bool:
         """Verifica si el frame tiene checksum válido (simulación realista)."""

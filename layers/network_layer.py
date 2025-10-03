@@ -5,6 +5,7 @@ class NetworkLayer:
         self.machine_id = machine_id
         self.received_packets = []  # Lista de paquetes recibidos
         self.pending_data = []  # Cola de datos pendientes por enviar
+        self._packets_received = 0  # Contador simple para testing
 
     def has_data_ready(self) -> bool:
         # Solo tiene datos si hay algo en la cola pendiente
@@ -29,7 +30,13 @@ class NetworkLayer:
     def deliver_packet(self, packet: Packet):
         # Entrega el paquete recibido a la aplicación
         self.received_packets.append(packet)
+        self._packets_received += 1  # Incrementar contador
         print(f"  [NetworkLayer-{self.machine_id}] Entregado a aplicación: {packet}")
+    
+    def deliver_packets(self, packets):
+        # Entrega múltiples paquetes (para Selective Repeat)
+        for packet in packets:
+            self.deliver_packet(packet)
 
     def get_stats(self):
         # Retorna estadísticas de envío y recepción

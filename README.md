@@ -1,80 +1,115 @@
-# Simulador de Protocolos de Red
+# 🌐 Simulador de Protocolos de Red - Versión Modular
 
-Simulador educativo que muestra cómo las máquinas se comunican enviando datos a través de una red con errores, usando un modelo de capas donde cada máquina coordina NetworkLayer, DataLinkLayer y PhysicalLayer.
+Simulador educativo avanzado que implementa múltiples protocolos de comunicación de red usando una arquitectura modular. Simula la comunicación entre máquinas a través de una red con errores controlados, demostrando diferentes estrategias de confiabilidad.
 
-## ¿Cómo Funciona?
+## 🚀 Protocolos Implementados
 
-### 1. Configuración Inicial
-```python
-python main.py
+### 1. **Utopia Protocol**
+- Protocolo ideal sin errores ni pérdidas
+- Transmisión directa sin control de errores
+- Caso de estudio para comparación
+
+### 2. **PAR (Positive Acknowledgment with Retransmission)**
+- Confirmación positiva con retransmisión
+- Manejo básico de errores y timeouts
+- ACKs explícitos para cada frame
+
+### 3. **Stop and Wait**
+- Un frame a la vez con confirmación
+- Espera ACK antes del siguiente envío
+- Control de flujo simple
+
+### 4. **Selective Repeat (Bidireccional)**
+- **Ventana deslizante configurable** (por defecto N=4)
+- **Comunicación bidireccional** completa
+- **Retransmisión selectiva** de frames perdidos
+- **Timeouts individuales** por frame
+- **ACKs selectivos** para eficiencia máxima
+
+## 🎯 Ejecución Rápida
+
+```bash
+python3 main.py
 ```
 
-El programa crea:
-- **Máquina A**: Máquina emisora que envía datos
-- **Máquina B**: Máquina receptora que recibe datos
-- **Simulador**: Maneja eventos y coordina la comunicación entre máquinas
+El simulador detecta automáticamente todos los protocolos disponibles y presenta un menú interactivo para seleccionar y configurar la simulación.
 
-### 2. Program Flow
+## 🏗️ Arquitectura Modular
+
+### Estructura del Proyecto
+```
+network_simulator/
+├── main.py                    # 🎯 Punto de entrada modular
+├── protocols/                 # 🔧 Protocolos de comunicación
+│   ├── __init__.py
+│   ├── protocol_interface.py  # 📋 Interfaz base para todos los protocolos
+│   ├── utopia.py             # ✨ Protocolo ideal
+│   ├── par.py                # 🔄 Positive ACK with Retransmission
+│   ├── stop_and_wait.py      # ⏸️ Stop and Wait
+│   └── selective_repeat.py   # 🎯 Selective Repeat bidireccional
+├── layers/                   # 🌐 Capas de red
+│   ├── network_layer.py      # 📊 Capa de red
+│   ├── data_link_layer.py    # 📦 Capa de enlace (protocolo-agnóstica)
+│   └── physical_layer.py     # ⚡ Capa física (errores y delays)
+├── models/                   # 📋 Modelos de datos
+│   ├── events.py            # 📅 Eventos del simulador
+│   ├── frame.py             # 📨 Estructura de frames
+│   └── packet.py            # 📦 Estructura de paquetes
+└── simulation/              # ⚙️ Motor de simulación
+    ├── simulator.py         # 🎮 Simulador principal
+    ├── machine.py          # 🖥️ Máquina coordinadora
+    └── event_scheduler.py  # ⏰ Programador de eventos
+```
+
+### 🔄 Flujo de Arquitectura Modular
 
 ```mermaid
 flowchart TD
-    A[Start] --> B[Simulator creates Machines]
-    B --> C[Machines initialize layers]
-    C --> D[Schedule initial events]
-    D --> E[Get next event]
-    E --> F{Event type?}
-
-    F -->|NETWORK_LAYER_READY| G[Machine routes to DataLinkLayer]
-    G --> H[Protocol creates Frame]
-    H --> I[Schedule SEND_FRAME event]
-    I --> J[PhysicalLayer sends]
-    J --> K{Corrupted during transmission?}
-    K -->|Yes| L[Schedule CKSUM_ERR event]
-    K -->|No| M[Schedule FRAME_ARRIVAL event]
-
-    F -->|FRAME_ARRIVAL| N[DataLinkLayer verifies frame]
-    N --> O[Protocol processes valid frame]
-    O --> P[Schedule DELIVER_PACKET event]
-
-    F -->|CKSUM_ERR| Q[Protocol handles corruption]
-    Q --> R[Protocol-specific action]
-
-    F -->|DELIVER_PACKET| S[NetworkLayer delivers packet]
-
-    F -->|SEND_FRAME| T[PhysicalLayer applies delays/errors]
-
-    L --> U[Continue simulation]
-    M --> U
-    P --> U
-    R --> U
-    S --> U
-    T --> U
-
-    U --> V{More events in queue?}
-    V -->|Yes| E
-    V -->|No| W[End simulation]
+    A[main.py] --> B[Descubrimiento Automático de Protocolos]
+    B --> C[Menú Interactivo]
+    C --> D[Selección de Protocolo]
+    D --> E[Configuración de Simulación]
+    E --> F[Creación de Máquinas con Protocolo]
+    
+    F --> G[Simulador Event-Driven]
+    G --> H[Procesamiento de Eventos]
+    H --> I{Tipo de Evento}
+    
+    I -->|NETWORK_LAYER_READY| J[Protocolo Genera Frame]
+    I -->|FRAME_ARRIVAL| K[Protocolo Procesa Frame]  
+    I -->|TIMEOUT| L[Protocolo Maneja Timeout]
+    I -->|CKSUM_ERR| M[Protocolo Maneja Error]
+    
+    J --> N[Capas Ejecutan Acciones]
+    K --> N
+    L --> N  
+    M --> N
+    
+    N --> O[Más Eventos?]
+    O -->|Sí| H
+    O -->|No| P[Fin de Simulación]
 ```
 
-#### General Flow (protocol-independent):
-1. **Simulator** creates machines and initializes their layers
-2. **EventScheduler** manages chronological event processing
-3. **Event types and their usage**:
-   - `NETWORK_LAYER_READY` → Machine has data to send, routes to DataLinkLayer
-   - `FRAME_ARRIVAL` → Valid frame received, DataLinkLayer processes with Protocol
-   - `CKSUM_ERR` → Corrupted frame received, Protocol handles error
-   - `DELIVER_PACKET` → Packet ready for delivery to NetworkLayer
-   - `SEND_FRAME` → Frame ready for transmission via PhysicalLayer
-4. **Machine** acts as event router, delegating to appropriate layers
-5. **DataLinkLayer** coordinates with Protocol for communication logic
-6. **PhysicalLayer** applies realistic transmission delays and errors
-7. **Process repeats** until event queue is empty
+### 🧩 Interfaz de Protocolos
 
-### 3. Sistema de Eventos
+Todos los protocolos implementan la misma interfaz estándar:
 
-El simulador funciona con **eventos programados**:
-- `network_layer_ready`: "Tengo datos para enviar"
-- `frame_arrival`: "Llegó un frame válido"
-- `cksum_err`: "Llegó un frame corrupto"
+```python
+class ProtocolInterface:
+    def handle_network_layer_ready(self, packet) -> ProtocolResponse
+    def handle_frame_arrival(self, frame) -> ProtocolResponse  
+    def handle_timeout(self, timer_id=None) -> ProtocolResponse
+    def handle_checksum_error(self, frame) -> ProtocolResponse
+```
+
+### ⚡ Sistema de Eventos
+
+El simulador procesa eventos cronológicamente:
+- **`NETWORK_LAYER_READY`**: Datos listos para enviar
+- **`FRAME_ARRIVAL`**: Frame válido recibido
+- **`CKSUM_ERR`**: Frame corrupto detectado
+- **`TIMEOUT`**: Timeout de retransmisión
+- **`SEND_FRAME`**: Envío físico de frame
 
 ### 4. Lo Que Ves en Pantalla
 
@@ -175,59 +210,66 @@ graph TD
     style PROT fill:#f1f8e9
 ```
 
-## Estructura de Archivos
+## 🚀 Ejemplos de Uso
 
-```
-main.py                    # Punto de entrada - configura y ejecuta simulación
-├── simulation/
-│   ├── simulator.py       # Coordinador principal del simulador
-│   ├── machine.py         # Máquina que coordina todas las capas
-│   └── event_scheduler.py # Cola de eventos ordenada por tiempo
-├── protocols/
-│   └── utopia.py          # Protocolo simple sin control de errores
-├── layers/
-│   ├── network_layer.py   # Crea y entrega paquetes
-│   ├── data_link_layer.py # Coordina con protocolos y verifica frames
-│   └── physical_layer.py  # Transmisión con errores y retardos realistas
-└── models/
-    ├── packet.py          # Datos a transmitir
-    ├── frame.py           # Envoltorio del packet con metadatos
-    └── events.py          # Tipos de eventos del simulador
+### Ejecutar Simulación Básica
+```bash
+python3 main.py
+
+# Seleccionar protocolo del menú interactivo
+# Configurar tasas de error y delays
+# Observar la comunicación en tiempo real
 ```
 
-## Relaciones de Componentes
+### Comparar Rendimiento de Protocolos
+1. **Utopia**: Sin errores → Línea base de rendimiento
+2. **PAR**: Con errores → Ver impacto de retransmisiones  
+3. **Stop-and-Wait**: Eficiencia vs confiabilidad
+4. **Selective Repeat**: Máximo throughput con confiabilidad
 
-### ¿Quién Contiene a Quién?
+### Escenarios de Prueba Recomendados
 
-- **Simulator** ←→ contiene múltiples **Machines**
-- **Machine** ←→ administra **NetworkLayer**, **DataLinkLayer**, **PhysicalLayer**
-- **DataLinkLayer** ←→ contiene un **Protocol** específico
-- **NetworkLayer** ←→ crea y maneja **Packets**
-- **DataLinkLayer + Protocol** ←→ crean y procesan **Frames**
-- **PhysicalLayer** ←→ transmite **Frames** con errores/retardos
-- **EventScheduler** ←→ maneja cola de **Events**
+#### 📊 Ambiente Ideal (Error Rate = 0.0)
+- Todos los protocolos funcionan perfectamente
+- Selective Repeat muestra su ventaja en throughput
+- Latencias mínimas
 
-### Flujo de Responsabilidades
+#### ⚠️ Red con Errores Moderados (Error Rate = 0.1)  
+- PAR y Stop-and-Wait muestran retransmisiones
+- Selective Repeat mantiene mejor rendimiento
+- Timeouts y recovery visibles
 
-1. **Simulator** coordina todo y maneja eventos
-2. **Machine** actúa como router de eventos hacia sus capas
-3. **DataLinkLayer** delega decisiones al **Protocol**
-4. **Protocol** decide toda la lógica de comunicación
-5. **PhysicalLayer** aplica condiciones realistas de red
+#### 🔥 Red Hostil (Error Rate = 0.3+)
+- Protocolos simples sufren mucho
+- Selective Repeat demuestra su robustez
+- Múltiples retransmisiones concurrentes
 
-## ¿Para Qué Sirve?
+## 🎯 Propósito Educativo
 
-Este simulador te ayuda a entender:
-- Cómo las máquinas coordinan múltiples capas de red
-- Por qué los protocolos necesitan manejar errores y eventos
-- Cómo funciona la simulación por eventos discretos
-- La diferencia entre paquetes y frames
-- Cómo se delegan responsabilidades entre capas
+Este simulador modular permite entender:
 
-## Ejecutar
+### 🔧 **Protocolos de Red**
+- **Confiabilidad vs Eficiencia**: Comparación directa entre protocolos
+- **Manejo de Errores**: Diferentes estrategias (ignorar, retransmitir, selective repeat)
+- **Control de Flujo**: Ventanas deslizantes y stop-and-wait
+- **Timeouts y Recovery**: Mecanismos de recuperación automática
+
+### 🏗️ **Arquitectura de Software**
+- **Separación de Responsabilidades**: Cada capa tiene un propósito específico
+- **Interfaces Consistentes**: Todos los protocolos implementan la misma API
+- **Modularidad**: Fácil agregar nuevos protocolos sin modificar el resto
+- **Event-Driven Programming**: Simulación basada en eventos discretos
+
+### 🌐 **Conceptos de Redes**
+- **Modelo de Capas**: Network, DataLink, Physical
+- **Frames vs Packets**: Diferencias y encapsulación
+- **Transmisión con Errores**: Simulación realista de medios físicos
+- **Comunicación Bidireccional**: Flujos simultáneos de datos
+
+## 🚀 Ejecutar
 
 ```bash
-python main.py
+python3 main.py
 ```
 
-Verás la configuración de errores, luego el intercambio de frames en tiempo real, y finalmente las estadísticas de cuántos frames se enviaron y recibieron.
+**¡Disfruta explorando cómo los diferentes protocolos manejan la comunicación en redes con errores!** 🌐

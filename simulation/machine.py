@@ -51,7 +51,11 @@ class Machine:
 
         elif event.event_type == EventType.TIMEOUT:
             # Timeout del protocolo -> delegar al protocolo via DataLinkLayer
-            response = self.protocol.handle_timeout(simulator)
+            # Verificar si el protocolo soporta timeouts específicos por frame
+            if hasattr(self.protocol, 'handle_timeout_for_frame') and event.data and 'timer_id' in event.data:
+                response = self.protocol.handle_timeout_for_frame(event.data['timer_id'], simulator)
+            else:
+                response = self.protocol.handle_timeout(simulator)
             self.data_link_layer._execute_protocol_response(response, simulator)
 
         else:
