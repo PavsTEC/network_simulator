@@ -81,13 +81,24 @@ class PARProtocol(ProtocolInterface):
                     'ack_seq': frame.seq_num
                 }
             else:
-                # Secuencia incorrecta - enviar NAK
-                print(f"[PAR-{self.machine_id}] Frame seq={frame.seq_num} incorrecto (esperaba {self.expected_seq}), enviando NAK")
-                
-                return {
-                    'action': 'send_nak',
-                    'nak_seq': self.expected_seq
-                }
+                # Verificar si es frame duplicado (secuencia anterior)
+                previous_seq = 1 - self.expected_seq
+                if frame.seq_num == previous_seq:
+                    # Frame duplicado - reenviar ACK sin entregar paquete
+                    print(f"[PAR-{self.machine_id}] Frame seq={frame.seq_num} duplicado (esperaba {self.expected_seq}), reenviando ACK")
+                    
+                    return {
+                        'action': 'send_ack_only',
+                        'ack_seq': frame.seq_num
+                    }
+                else:
+                    # Secuencia incorrecta - enviar NAK
+                    print(f"[PAR-{self.machine_id}] Frame seq={frame.seq_num} incorrecto (esperaba {self.expected_seq}), enviando NAK")
+                    
+                    return {
+                        'action': 'send_nak',
+                        'nak_seq': self.expected_seq
+                    }
         
         elif frame.type == "ACK":
             # ACK recibido
