@@ -126,7 +126,7 @@ class GoBackNProtocol(ProtocolInterface):
 
     def handle_frame_corruption(self, frame: Frame) -> dict:
         """Frame corrupto detectado por la capa física."""
-        print(f"[GBN-{self.machine_id}] Frame corrupto → ignorar (timeout manejará retransmisión)")
+        print(f"[GBN-{self.machine_id}] Frame corrupto → ignorar (retransmisión)")
         return {'action': 'no_action'}
 
     def handle_timeout(self, simulator) -> dict:
