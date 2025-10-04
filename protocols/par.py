@@ -12,10 +12,9 @@ from protocols.protocol_interface import ProtocolInterface
 
 
 class PARProtocol(ProtocolInterface):
-    """Protocolo PAR con ACK/NAK y timeout."""
 
     def __init__(self, machine_id: str):
-        """Inicializa el protocolo PAR."""
+        # Inicializa el protocolo PAR.
         super().__init__(machine_id)
         
         # Estado del protocolo
@@ -23,8 +22,8 @@ class PARProtocol(ProtocolInterface):
         self.expected_seq = 0  # Secuencia esperada en receptor
         
         # Control de reenvío
-        self.waiting_for_ack = False  # ¿Esperando ACK?
-        self.last_frame_sent = None  # Último frame enviado (para reenvío)
+        self.waiting_for_ack = False  # Si está esperando ACK o no
+        self.last_frame_sent = None  # Último frame enviado
         self.last_destination = None  # Destino del último frame
         
         # Timeouts
@@ -32,7 +31,8 @@ class PARProtocol(ProtocolInterface):
         self.timeout_event_scheduled = False
 
     def handle_network_layer_ready(self, network_layer, data_link_layer, simulator) -> dict:
-        """Decide qué hacer cuando hay datos listos en Network Layer."""
+        
+        # Decide qué hacer cuando hay datos listos en Network Layer.
         
         # Solo procesar si no estamos esperando ACK
         if self.waiting_for_ack:
@@ -64,7 +64,7 @@ class PARProtocol(ProtocolInterface):
         return {'action': 'no_action'}
 
     def handle_frame_arrival(self, frame) -> dict:
-        """Decide qué hacer con un frame recibido."""
+        # Decide qué hacer con un frame recibido.
         
         if frame.type == "DATA":
             # Frame de datos recibido
@@ -97,7 +97,7 @@ class PARProtocol(ProtocolInterface):
                 
                 self.seq_num = 1 - self.seq_num  # Alternar entre 0 y 1
                 self.waiting_for_ack = False
-                self.timeout_event_scheduled = False
+                self.timeout_event_scheduled = False  # Marcar timeout como no activo
                 
                 return {'action': 'continue_sending'}
             else:
@@ -117,7 +117,7 @@ class PARProtocol(ProtocolInterface):
         return {'action': 'no_action'}
 
     def handle_frame_corruption(self, frame) -> dict:
-        """Decide qué hacer con un frame corrupto."""
+        # Decide qué hacer con un frame corrupto
         print(f"[PAR-{self.machine_id}] Frame corrupto recibido")
         
         # En PAR, frame corrupto se trata como no recibido
@@ -130,6 +130,9 @@ class PARProtocol(ProtocolInterface):
         if self.waiting_for_ack and self.last_frame_sent:
             print(f"[PAR-{self.machine_id}] TIMEOUT - Reenviando frame seq={self.last_frame_sent.seq_num}")
             
+            # Resetear flag de timeout antes de programar uno nuevo
+            self.timeout_event_scheduled = False
+            
             # Reprogramar nuevo timeout
             self._schedule_timeout(simulator)
             
@@ -138,11 +141,14 @@ class PARProtocol(ProtocolInterface):
                 'frame': self.last_frame_sent,
                 'destination': self.last_destination
             }
-        
+        else:
+            # Timeout ya no es necesario (ACK fue recibido)
+            print(f"[PAR-{self.machine_id}] TIMEOUT ignorado - ACK ya fue recibido")
+            
         return {'action': 'no_action'}
 
     def _schedule_timeout(self, simulator):
-        """Programa un evento de timeout."""
+        # Programa un evento de timeout
         if not self.timeout_event_scheduled:
             timeout_event = Event(
                 EventType.TIMEOUT,
@@ -154,7 +160,7 @@ class PARProtocol(ProtocolInterface):
             print(f"[PAR-{self.machine_id}] Timeout programado en {self.timeout_duration}s")
 
     def get_stats(self) -> dict:
-        """Retorna estadísticas del protocolo."""
+        # Retorna estadísticas del protocolo
         stats = super().get_stats()
         stats.update({
             'current_seq': self.seq_num,
@@ -165,5 +171,5 @@ class PARProtocol(ProtocolInterface):
         return stats
 
     def get_protocol_name(self) -> str:
-        """Obtiene el nombre del protocolo."""
+        # Obtiene el nombre del protocolo
         return "PAR"
