@@ -138,4 +138,4 @@ class SlidingWindow1BitProtocol(ProtocolInterface):
         return stats
 
     def get_protocol_name(self) -> str:
-        return "Sliding Window (1-bit)"
+        return "Sliding Window"
