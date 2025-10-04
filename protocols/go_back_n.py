@@ -195,4 +195,4 @@ class GoBackNProtocol(ProtocolInterface):
         return stats
 
     def get_protocol_name(self) -> str:
-        return f"Go-Back-N)"
+        return f"Go-Back-N"
