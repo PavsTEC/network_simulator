@@ -25,9 +25,9 @@ def get_available_protocols() -> dict:
         'utopia',
         'par',
         'stop_and_wait',
-        'selective_repeat',
         'sliding_window',
-        'go_back_n'
+        'go_back_n',
+        'selective_repeat'  
     ]
     
     for module_name in protocol_modules:
