@@ -263,6 +263,9 @@ class NetworkSimulatorGUI:
         )
         protocol_combo.grid(row=0, column=1, padx=5)
 
+        # Vincular evento de cambio de protocolo
+        protocol_combo.bind("<<ComboboxSelected>>", self._on_protocol_change)
+
         # Tasa de error (compartida)
         tk.Label(config_frame, text="Tasa de Error:", bg="#2c3e50", fg="white", font=("Arial", 10)).grid(row=0, column=2, padx=5, sticky="e")
         self.error_var = tk.StringVar(value="0.1")
@@ -277,6 +280,11 @@ class NetworkSimulatorGUI:
         tk.Label(config_frame, text="Intervalo (s):", bg="#2c3e50", fg="white", font=("Arial", 10)).grid(row=0, column=6, padx=5, sticky="e")
         self.interval_var = tk.StringVar(value="2.0")
         tk.Entry(config_frame, textvariable=self.interval_var, width=10).grid(row=0, column=7, padx=5)
+
+        # Tamaño de ventana (para GBN y SR) - inicialmente oculto
+        self.window_label = tk.Label(config_frame, text="Ventana N:", bg="#2c3e50", fg="white", font=("Arial", 10))
+        self.window_size_var = tk.StringVar(value="4")
+        self.window_entry = tk.Entry(config_frame, textvariable=self.window_size_var, width=10)
 
         # Botones de control
         button_frame = tk.Frame(control_frame, bg="#2c3e50")
@@ -353,6 +361,9 @@ class NetworkSimulatorGUI:
             self.stats_labels[key] = label
 
         self.stats_labels["status"].config(text="⏹️ Detenido", fg="#95a5a6")
+
+        # Ocultar campo de ventana inicialmente (protocolo por defecto es Stop and Wait)
+        self._on_protocol_change()
 
     def _draw_machines(self):
         """Dibuja las máquinas A y B en el canvas."""
@@ -479,6 +490,18 @@ class NetworkSimulatorGUI:
             self.machine_tooltips[machine_id].destroy()
             self.machine_tooltips[machine_id] = None
 
+    def _on_protocol_change(self, event=None):
+        """Muestra/oculta el campo de ventana según el protocolo seleccionado."""
+        protocol_name = self.protocol_var.get()
+
+        # Mostrar campo de ventana solo para Go-Back-N y Selective Repeat
+        if protocol_name in ["Go-Back-N", "Selective Repeat"]:
+            self.window_label.grid(row=0, column=8, padx=5, sticky="e")
+            self.window_entry.grid(row=0, column=9, padx=5)
+        else:
+            self.window_label.grid_remove()
+            self.window_entry.grid_remove()
+
     def _start_simulation(self):
         """Inicia la simulación."""
         try:
@@ -489,6 +512,7 @@ class NetworkSimulatorGUI:
             error_rate = float(self.error_var.get())
             delay = float(self.delay_var.get())
             interval = float(self.interval_var.get())
+            window_size = int(self.window_size_var.get())
 
             # Validar
             if not (0 <= error_rate <= 1):
@@ -499,8 +523,12 @@ class NetworkSimulatorGUI:
                 messagebox.showerror("Error", "Los tiempos deben ser no negativos")
                 return
 
-            # Crear simulador con callback (ambas máquinas usan los mismos parámetros)
-            self.simulator = Simulator(gui_callback=self._handle_simulator_event)
+            if not (2 <= window_size <= 8):
+                messagebox.showerror("Error", "El tamaño de ventana debe estar entre 2 y 8")
+                return
+
+            # Crear simulador con callback y window_size
+            self.simulator = Simulator(gui_callback=self._handle_simulator_event, window_size=window_size)
             self.simulator.add_machine("A", protocol_class, error_rate=error_rate, transmission_delay=delay)
             self.simulator.add_machine("B", protocol_class, error_rate=error_rate, transmission_delay=delay)
             self.simulator.start_simulation()
@@ -574,7 +602,6 @@ class NetworkSimulatorGUI:
 
     def _simulation_loop(self):
         """Loop principal de la simulación (corre en thread separado)."""
-        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         index_a = 0  # Índice para A->B
         index_b = 0  # Índice para B->A
         next_send_time_a = 0.0
@@ -583,19 +610,19 @@ class NetworkSimulatorGUI:
         last_pause_time = 0.0
         total_paused_time = 0.0
 
-        # Por ahora deshabilitamos bidireccionalidad en GUI
-        # TODO: Implementar después de arreglar en main.py
-        is_bidirectional = False
+        # Detectar si el protocolo es bidireccional
+        protocol_instance = self.simulator._machines["A"].protocol
+        is_bidirectional = protocol_instance.is_bidirectional()
 
         while self.running and self.simulator:
             if not self.paused:
                 # Calcular tiempo real transcurrido (excluyendo pausas)
                 real_time = time.time() - start_time - total_paused_time
 
-                # Enviar paquete A -> B
-                if real_time >= next_send_time_a:
-                    letter = alphabet[index_a % len(alphabet)]
-                    success = self.simulator.send_data("A", "B", letter)
+                # Enviar paquete A -> B (números)
+                if not self.paused and real_time >= next_send_time_a:
+                    data = str(index_a)
+                    success = self.simulator.send_data("A", "B", data)
 
                     if success:
                         self.packet_count += 1
@@ -604,11 +631,10 @@ class NetworkSimulatorGUI:
 
                     next_send_time_a = real_time + self.sim_config['interval']
 
-                # Enviar paquete B -> A (solo si es bidireccional)
-                if is_bidirectional and real_time >= next_send_time_b:
-                    # Usar números para B->A para diferenciar
-                    digit = str(index_b % 10)
-                    success = self.simulator.send_data("B", "A", digit)
+                # Enviar paquete B -> A (números, solo si es bidireccional)
+                if not self.paused and is_bidirectional and real_time >= next_send_time_b:
+                    data = str(index_b)
+                    success = self.simulator.send_data("B", "A", data)
 
                     if success:
                         self.packet_count += 1
@@ -617,8 +643,9 @@ class NetworkSimulatorGUI:
 
                     next_send_time_b = real_time + self.sim_config['interval']
 
-                # Procesar eventos pendientes cuyo tiempo haya llegado
-                self.simulator.run_simulation_step(real_time)
+                # Procesar eventos pendientes cuyo tiempo haya llegado (solo si no está pausado)
+                if not self.paused:
+                    self.simulator.run_simulation_step(real_time)
 
             else:
                 # Si acaba de pausar, registrar el tiempo

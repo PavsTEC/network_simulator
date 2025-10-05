@@ -12,7 +12,7 @@ from protocols.protocol_interface import ProtocolInterface
 
 
 class PARProtocol(ProtocolInterface):
-    """Protocolo PAR con ACK/NAK y timeout."""
+    """Protocolo PAR con ACK y timeout."""
 
     def __init__(self, machine_id: str):
         """Inicializa el protocolo PAR."""
@@ -27,104 +27,98 @@ class PARProtocol(ProtocolInterface):
         self.last_packet = None  # Último packet (para reenvío con frame fresco)
         self.last_destination = None  # Destino del último frame
 
-    def handle_network_layer_ready(self, network_layer, data_link_layer, simulator) -> dict:
-        """Decide qué hacer cuando hay datos listos en Network Layer."""
-        
+    def handle_network_layer_ready(self, network_layer) -> None:
+        """Maneja cuando Network Layer tiene datos listos para enviar."""
+
         # Solo procesar si no estamos esperando ACK
         if self.waiting_for_ack:
-            print(f"[PAR-{self.machine_id}] Esperando ACK, no se pueden enviar más datos")
-            return {'action': 'no_action'}
-        
-        if network_layer.has_data_ready():
-            packet, destination = network_layer.get_packet()
-            if packet and destination:
-                # Guardar para posible reenvío
-                self.last_packet = packet
-                self.last_destination = destination
-                self.waiting_for_ack = True
+            return
 
-                # Crear frame DATA con número de secuencia
-                frame = Frame("DATA", self.seq_num, 0, packet)
+        # Obtener packet de Network Layer
+        packet, destination = self.from_network_layer(network_layer)
+        if packet and destination:
+            # Guardar para posible reenvío
+            self.last_packet = packet
+            self.last_destination = destination
+            self.waiting_for_ack = True
 
-                print(f"[PAR-{self.machine_id}] Enviando frame seq={self.seq_num}")
+            # Crear frame DATA con número de secuencia
+            frame = Frame("DATA", self.seq_num, 0, packet)
 
-                return {
-                    'action': 'send_frame_with_timeout',
-                    'frame': frame,
-                    'destination': destination
-                }
-        
-        return {'action': 'no_action'}
+            self._log(f"[PAR-{self.machine_id}] Enviando frame seq={self.seq_num}")
 
-    def handle_frame_arrival(self, frame) -> dict:
-        """Decide qué hacer con un frame recibido."""
+            # Enviar frame y activar timeout
+            self.to_physical_layer(frame, destination)
+            self.start_timer()
+
+    def handle_frame_arrival(self, frame) -> None:
+        """Maneja la llegada de un frame válido."""
 
         if frame.type == "DATA":
             # Frame de datos recibido
             if frame.seq_num == self.expected_seq:
-                # Secuencia correcta - entregar paquete
-                print(f"[PAR-{self.machine_id}] Frame seq={frame.seq_num} correcto, enviando ACK")
+                # Secuencia correcta - entregar paquete y enviar ACK
+                self._log(f"[PAR-{self.machine_id}] Frame seq={frame.seq_num} correcto, enviando ACK")
+
+                # Entregar paquete a Network Layer
+                self.to_network_layer(frame.packet)
+
+                # Enviar ACK
+                ack_frame = Frame("ACK", 0, frame.seq_num)
+                self.to_physical_layer(ack_frame, "A")  # Hardcoded por ahora
 
                 # Actualizar secuencia esperada
                 self.expected_seq = 1 - self.expected_seq  # Alternar entre 0 y 1
 
-                return {
-                    'action': 'deliver_packet_and_send_ack',
-                    'packet': frame.packet,
-                    'ack_seq': frame.seq_num
-                }
             else:
                 # Secuencia duplicada o incorrecta - reenviar ACK anterior
-                print(f"[PAR-{self.machine_id}] Frame seq={frame.seq_num} duplicado, reenviando ACK anterior")
+                self._log(f"[PAR-{self.machine_id}] Frame seq={frame.seq_num} duplicado, reenviando ACK anterior")
 
-                return {
-                    'action': 'send_ack_only',
-                    'ack_seq': 1 - self.expected_seq
-                }
-        
+                # Reenviar ACK del frame anterior
+                ack_frame = Frame("ACK", 0, 1 - self.expected_seq)
+                self.to_physical_layer(ack_frame, "A")
+
         elif frame.type == "ACK":
             # ACK recibido
             if self.waiting_for_ack and frame.ack_num == self.seq_num:
                 # ACK correcto - avanzar secuencia
-                print(f"[PAR-{self.machine_id}] ACK seq={frame.ack_num} recibido correctamente")
+                self._log(f"[PAR-{self.machine_id}] ACK seq={frame.ack_num} recibido correctamente")
 
+                # Detener timeout
+                self.stop_timer()
+
+                # Actualizar estado
                 self.seq_num = 1 - self.seq_num  # Alternar entre 0 y 1
                 self.waiting_for_ack = False
                 self.last_packet = None
                 self.last_destination = None
 
-                return {'action': 'stop_timeout_and_continue'}
+                # Intentar enviar siguiente paquete inmediatamente
+                self.enable_network_layer()
+
             else:
                 # ACK incorrecto o no esperado
-                print(f"[PAR-{self.machine_id}] ACK seq={frame.ack_num} incorrecto o no esperado")
-                return {'action': 'no_action'}
+                self._log(f"[PAR-{self.machine_id}] ACK seq={frame.ack_num} incorrecto o no esperado")
 
-        return {'action': 'no_action'}
+    def handle_frame_corruption(self, frame) -> None:
+        """Maneja un frame corrupto."""
+        self._log(f"[PAR-{self.machine_id}] Frame corrupto recibido")
 
-    def handle_frame_corruption(self, frame) -> dict:
-        """Decide qué hacer con un frame corrupto."""
-        print(f"[PAR-{self.machine_id}] Frame corrupto recibido")
-        
         # En PAR, frame corrupto se trata como no recibido
         # Si esperábamos un DATA, no enviamos nada (timeout se encargará)
         # Si esperábamos un ACK, timeout se encargará del reenvío
-        return {'action': 'no_action'}
 
-    def handle_timeout(self, simulator) -> dict:
-        """Maneja evento de timeout."""
+    def handle_timeout(self) -> None:
+        """Maneja eventos de timeout."""
         if self.waiting_for_ack and self.last_packet:
-            print(f"[PAR-{self.machine_id}] ⏰ TIMEOUT! Retransmitiendo frame seq={self.seq_num}")
+            self._log(f"[PAR-{self.machine_id}]  TIMEOUT! Retransmitiendo frame seq={self.seq_num}")
 
             # Crear frame fresco
             fresh_frame = Frame("DATA", self.seq_num, 0, self.last_packet)
 
-            return {
-                'action': 'send_frame_with_timeout',
-                'frame': fresh_frame,
-                'destination': self.last_destination
-            }
-
-        return {'action': 'no_action'}
+            # Reenviar frame con timeout
+            self.to_physical_layer(fresh_frame, self.last_destination)
+            self.start_timer()
 
     def get_stats(self) -> dict:
         """Retorna estadísticas del protocolo."""

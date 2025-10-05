@@ -20,64 +20,54 @@ class StopAndWaitProtocol(ProtocolInterface):
         # Estado del protocolo
         self.waiting_for_ack = False  # ¿Esperando ACK?
 
-    def handle_network_layer_ready(self, network_layer, data_link_layer, simulator) -> dict:
-        """Decide qué hacer cuando hay datos listos en Network Layer."""
+    def handle_network_layer_ready(self, network_layer) -> None:
+        """Maneja cuando Network Layer tiene datos listos para enviar."""
 
         # Solo procesar si no estamos esperando ACK
         if self.waiting_for_ack:
-            print(f"[StopWait-{self.machine_id}] Esperando ACK, no se pueden enviar más datos")
-            return {'action': 'no_action'}
+            self._log(f"[StopWait-{self.machine_id}] Esperando ACK, no se pueden enviar más datos")
+            return
 
-        if network_layer.has_data_ready():
-            packet, destination = network_layer.get_packet()
-            if packet and destination:
-                self.waiting_for_ack = True
+        packet, destination = self.from_network_layer(network_layer)
+        if packet and destination:
+            self.waiting_for_ack = True
 
-                # Crear frame DATA simple (sin seq num, canal sin errores)
-                frame = Frame("DATA", 0, 0, packet)
+            # Crear frame DATA simple (sin seq num, canal sin errores)
+            frame = Frame("DATA", 0, 0, packet)
 
-                print(f"[StopWait-{self.machine_id}] Enviando frame")
+            self._log(f"[StopWait-{self.machine_id}] Enviando frame")
+            self.to_physical_layer(frame, destination)
 
-                return {
-                    'action': 'send_frame',
-                    'frame': frame,
-                    'destination': destination
-                }
-
-        return {'action': 'no_action'}
-
-    def handle_frame_arrival(self, frame) -> dict:
-        """Decide qué hacer con un frame recibido."""
+    def handle_frame_arrival(self, frame) -> None:
+        """Maneja la llegada de un frame válido."""
 
         if frame.type == "DATA":
-            # Frame de datos recibido - entregar y enviar ACK dummy
-            print(f"[StopWait-{self.machine_id}] Frame recibido, enviando ACK")
+            # Frame de datos recibido - entregar y enviar ACK
+            self._log(f"[StopWait-{self.machine_id}] Frame recibido, enviando ACK")
 
-            return {
-                'action': 'deliver_packet_and_send_ack',
-                'packet': frame.packet,
-                'ack_seq': 0  # ACK dummy (sin secuencia en canal sin errores)
-            }
+            # Entregar paquete
+            self.to_network_layer(frame.packet)
+
+            # Enviar ACK
+            ack_frame = Frame("ACK", 0, 0)
+            self.to_physical_layer(ack_frame, "A")  # Hardcoded por ahora
 
         elif frame.type == "ACK":
             # ACK recibido - continuar enviando
             if self.waiting_for_ack:
-                print(f"[StopWait-{self.machine_id}] ACK recibido")
+                self._log(f"[StopWait-{self.machine_id}] ACK recibido")
                 self.waiting_for_ack = False
 
-                return {'action': 'continue_sending'}
+                # Intentar enviar siguiente paquete inmediatamente
+                self.enable_network_layer()
             else:
-                print(f"[StopWait-{self.machine_id}] ACK no esperado")
-                return {'action': 'no_action'}
+                self._log(f"[StopWait-{self.machine_id}] ACK no esperado")
 
-        return {'action': 'no_action'}
-
-    def handle_frame_corruption(self, frame) -> dict:
-        """Decide qué hacer con un frame corrupto."""
+    def handle_frame_corruption(self, frame) -> None:
+        """Maneja un frame corrupto."""
         # Stop and Wait NO maneja errores (canal sin errores según especificación)
         # Este método no debería llamarse en este protocolo
-        print(f"[StopWait-{self.machine_id}] Frame corrupto recibido - ERROR: canal debería ser sin errores")
-        return {'action': 'no_action'}
+        self._log(f"[StopWait-{self.machine_id}] Frame corrupto recibido - ERROR: canal debería ser sin errores")
 
     def get_stats(self) -> dict:
         """Retorna estadísticas del protocolo."""

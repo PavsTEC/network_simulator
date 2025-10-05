@@ -1,210 +1,195 @@
 """
-Protocolo Go-Back-N (Protocol 5)
-- Ventana deslizante de tamaño MAX_SEQ
-- Permite múltiples frames pendientes
-- Retransmite TODOS los frames desde el primero no confirmado en caso de timeout
-- Piggybacking de ACKs
-- ACKs acumulativos (ACK n confirma todos hasta n)
+Protocolo Go-Back-N (GBN)
+Implementación base de Manfred, adaptada a la nueva arquitectura.
+
+- Comunicación bidireccional
+- Ventana de emisión de tamaño N
+- Ventana de recepción de tamaño 1
+- Retransmisión en bloque desde send_base al ocurrir timeout
+- ACKs acumulativos
 """
 
 from models.frame import Frame
-from models.events import Event, EventType
 from protocols.protocol_interface import ProtocolInterface
 
 
 class GoBackNProtocol(ProtocolInterface):
     """Protocolo Go-Back-N con ventana deslizante."""
 
-    MAX_SEQ = 7  # Tamaño de ventana - 1
-
-    def __init__(self, machine_id: str):
-        """Inicializa el protocolo Go-Back-N."""
+    def __init__(self, machine_id: str, window_size: int = 4):
         super().__init__(machine_id)
 
+        # Parámetros de ventana
+        self.window_size = window_size
+        self.max_seq_num = 2 * window_size  # Espacio circular (al menos 2N)
+
         # Estado del emisor
-        self.next_frame_to_send = 0  # Siguiente frame a enviar
-        self.ack_expected = 0  # Frame más antiguo sin confirmar
-        self.nbuffered = 0  # Número de frames en ventana
+        self.send_base = 0            # Primer frame no confirmado
+        self.next_seq_num = 0         # Próximo número de secuencia a enviar
+        self.send_buffer = {}         # {seq_num: {'frame': Frame, 'destination': str}}
 
         # Estado del receptor
-        self.frame_expected = 0  # Próximo frame esperado
+        self.expected_seq_num = 0     # Solo 1 frame válido a la vez (ventana de recepción = 1)
 
-        # Buffers para frames pendientes
-        self.buffer = {}  # {seq_num: (packet, destination)}
+        # Métricas
+        self.sent_frames = 0
+        self.received_frames = 0
+        self.acks_sent = 0
+        self.acks_received = 0
+        self.retransmissions = 0
 
-    def handle_network_layer_ready(self, network_layer, data_link_layer, simulator) -> dict:
+    def handle_network_layer_ready(self, network_layer) -> None:
         """Maneja cuando Network Layer tiene datos listos para enviar."""
+        # Enviar múltiples frames mientras haya espacio en ventana y datos disponibles
+        while not self._window_full():
+            packet, destination = self.from_network_layer(network_layer)
+            if not packet or not destination:
+                break  # No hay más datos disponibles
 
-        # Verificar si hay espacio en la ventana
-        if self.nbuffered >= self.MAX_SEQ:
-            print(f"[GoBackN-{self.machine_id}] Ventana llena ({self.nbuffered}/{self.MAX_SEQ})")
-            return {'action': 'no_action'}
-
-        if network_layer.has_data_ready():
-            packet, destination = network_layer.get_packet()
-            if packet and destination:
-                # Guardar en buffer
-                self.buffer[self.next_frame_to_send] = (packet, destination)
-                self.nbuffered += 1
-
-                # Crear frame con piggybacked ACK
-                piggybacked_ack = (self.frame_expected + self.MAX_SEQ) % (self.MAX_SEQ + 1)
-                frame = Frame("DATA", self.next_frame_to_send, piggybacked_ack, packet)
-
-                print(f"[GoBackN-{self.machine_id}] Enviando frame seq={self.next_frame_to_send}, ventana={self.nbuffered}/{self.MAX_SEQ}")
-
-                # Avanzar ventana
-                seq_to_send = self.next_frame_to_send
-                self.next_frame_to_send = self._inc(self.next_frame_to_send)
-
-                # Usar timeout solo si es el primero de la ventana
-                if self.nbuffered == 1:
-                    return {
-                        'action': 'send_frame_with_timeout',
-                        'frame': frame,
-                        'destination': destination
-                    }
-                else:
-                    return {
-                        'action': 'send_frame',
-                        'frame': frame,
-                        'destination': destination
-                    }
-
-        return {'action': 'no_action'}
-
-    def handle_frame_arrival(self, frame) -> dict:
-        """Maneja la llegada de un frame válido."""
-
-        if frame.type == "DATA":
-            print(f"[GoBackN-{self.machine_id}] Frame DATA recibido seq={frame.seq_num}, ack={frame.ack_num}")
-
-            # Manejar stream de entrada
-            packet_to_deliver = None
-            if frame.seq_num == self.frame_expected:
-                # Frame en orden - entregar
-                packet_to_deliver = frame.packet
-                self.frame_expected = self._inc(self.frame_expected)
-                print(f"[GoBackN-{self.machine_id}] Frame en orden, avanzando frame_expected a {self.frame_expected}")
-
-            # Manejar ACKs acumulativos (stream de salida)
-            ack_received = False
-            while self._between(self.ack_expected, frame.ack_num, self.next_frame_to_send):
-                # ACK recibido - liberar buffer
-                if self.ack_expected in self.buffer:
-                    del self.buffer[self.ack_expected]
-                self.nbuffered -= 1
-                print(f"[GoBackN-{self.machine_id}] ACK recibido para seq={self.ack_expected}, ventana={self.nbuffered}/{self.MAX_SEQ}")
-                self.ack_expected = self._inc(self.ack_expected)
-                ack_received = True
-
-            # Determinar acción basada en ACKs y paquetes
-            if packet_to_deliver:
-                # Entregar paquete y enviar ACK, luego continuar si hubo ACKs
-                action = {
-                    'action': 'deliver_packet_and_send_ack',
-                    'packet': packet_to_deliver,
-                    'ack_seq': frame.seq_num
-                }
-                # Si se recibieron ACKs y hay espacio, indicar continuar
-                if ack_received and self.nbuffered < self.MAX_SEQ:
-                    action['continue'] = True
-                return action
+            # Crear frame con piggybacked ACK (último frame recibido correctamente)
+            # Si no hemos recibido ningún frame, usar 0 (sin ACK piggybacked)
+            if self.expected_seq_num == 0:
+                piggybacked_ack = 0
             else:
-                # Frame fuera de orden - enviar ACK del último correcto
-                return {
-                    'action': 'send_ack_only',
-                    'ack_seq': (self.frame_expected + self.MAX_SEQ) % (self.MAX_SEQ + 1)
-                }
+                piggybacked_ack = (self.expected_seq_num - 1) % self.max_seq_num
+
+            frame = Frame("DATA", self.next_seq_num, piggybacked_ack, packet)
+            self._log(f"[GBN-{self.machine_id}] Enviando DATA seq={self.next_seq_num} -> {destination}")
+
+            # Guardar en buffer
+            self.send_buffer[self.next_seq_num] = {
+                'frame': frame,
+                'destination': destination
+            }
+
+            self.sent_frames += 1
+
+            # Si es el primer frame de la ventana, programar timeout global
+            if self.send_base == self.next_seq_num:
+                self.start_timer()
+
+            # Enviar frame
+            self.to_physical_layer(frame, destination)
+
+            # Avanzar secuencia circularmente
+            self.next_seq_num = (self.next_seq_num + 1) % self.max_seq_num
+
+    def handle_frame_arrival(self, frame: Frame) -> None:
+        """Maneja la llegada de un frame válido."""
+        if frame.type == "DATA":
+            seq = frame.seq_num
+            if seq == self.expected_seq_num:
+                self._log(f"[GBN-{self.machine_id}] DATA seq={seq} correcto -> entregar y enviar ACK")
+                self.received_frames += 1
+                self.acks_sent += 1
+
+                # Entregar paquete
+                self.to_network_layer(frame.packet)
+
+                # Avanzar secuencia esperada
+                self.expected_seq_num = (self.expected_seq_num + 1) % self.max_seq_num
+
+                # Enviar ACK
+                ack_frame = Frame("ACK", 0, seq)
+                self.to_physical_layer(ack_frame, "A" if self.machine_id == "B" else "B")
+
+            else:
+                self._log(f"[GBN-{self.machine_id}] DATA seq={seq} fuera de orden -> reenviar último ACK {(self.expected_seq_num - 1) % self.max_seq_num}")
+                self.acks_sent += 1
+
+                # Reenviar último ACK
+                ack_frame = Frame("ACK", 0, (self.expected_seq_num - 1) % self.max_seq_num)
+                self.to_physical_layer(ack_frame, "A" if self.machine_id == "B" else "B")
 
         elif frame.type == "ACK":
-            # ACK puro recibido - procesar ACKs acumulativos
-            ack_received = False
-            while self._between(self.ack_expected, frame.ack_num, self.next_frame_to_send):
-                if self.ack_expected in self.buffer:
-                    del self.buffer[self.ack_expected]
-                self.nbuffered -= 1
-                print(f"[GoBackN-{self.machine_id}] ACK puro recibido para seq={self.ack_expected}")
-                self.ack_expected = self._inc(self.ack_expected)
-                ack_received = True
+            ack = frame.ack_num
+            # ACK acumulativo
+            if self._in_window(self.send_base, ack):
+                self._log(f"[GBN-{self.machine_id}] ACK {ack} acumulativo -> avanzar base")
+                self.acks_received += 1
+                old_base = self.send_base
+                self.send_base = (ack + 1) % self.max_seq_num
 
-            # Si se recibió ACK y hay espacio en ventana, continuar enviando
-            if ack_received:
-                if self.nbuffered == 0:
-                    return {'action': 'stop_timeout_and_continue'}
+                # Eliminar frames confirmados del buffer
+                seq = old_base
+                while seq != self.send_base:
+                    self.send_buffer.pop(seq, None)
+                    seq = (seq + 1) % self.max_seq_num
+
+                # Reprogramar o cancelar timeout
+                if self.send_base == self.next_seq_num:
+                    # Ventana vacía, detener timeout
+                    self.stop_timer()
                 else:
-                    return {'action': 'continue_sending'}
+                    # Aún hay frames pendientes, reiniciar timeout
+                    self.stop_timer()
+                    self.start_timer()
 
-        return {'action': 'no_action'}
+                # Intentar enviar más paquetes si hay espacio en ventana
+                self.enable_network_layer()
+            else:
+                self._log(f"[GBN-{self.machine_id}] ACK {ack} duplicado o fuera de ventana -> ignorar")
 
-    def handle_frame_corruption(self, frame) -> dict:
+    def handle_frame_corruption(self, frame: Frame) -> None:
         """Maneja un frame corrupto."""
-        print(f"[GoBackN-{self.machine_id}] Frame corrupto recibido - ignorando")
-        # El timeout manejará el reenvío
-        return {'action': 'no_action'}
+        self._log(f"[GBN-{self.machine_id}] Frame corrupto -> ignorar (timeout manejará retransmisión)")
 
-    def handle_timeout(self, simulator) -> dict:
-        """Maneja evento de timeout - retransmite TODOS los frames pendientes."""
-        if self.nbuffered > 0:
-            print(f"[GoBackN-{self.machine_id}] TIMEOUT - Reenviando TODOS los frames desde seq={self.ack_expected}")
+    def handle_timeout(self) -> None:
+        """Retransmite todos los frames pendientes desde send_base."""
+        if not self.send_buffer:
+            self._log(f"[GBN-{self.machine_id}] TIMEOUT sin frames pendientes -> ignorar")
+            return
 
-            # Resetear next_frame_to_send al primero no confirmado
-            self.next_frame_to_send = self.ack_expected
+        self._log(f"[GBN-{self.machine_id}] TIMEOUT -> retransmitiendo todos los frames desde base {self.send_base}")
+        seq = self.send_base
+        while seq != self.next_seq_num:
+            frame_info = self.send_buffer.get(seq)
+            if frame_info:
+                frame = frame_info['frame']
+                destination = frame_info['destination']
+                print(f"   -> Reenviando DATA seq={seq}")
+                self.to_physical_layer(frame, destination)
+                self.retransmissions += 1
+            seq = (seq + 1) % self.max_seq_num
 
-            # Retransmitir todos los frames en la ventana
-            frames_to_send = []
-            temp_seq = self.ack_expected
+        # Reprogramar timeout global
+        self.start_timer()
 
-            for i in range(self.nbuffered):
-                if temp_seq in self.buffer:
-                    packet, destination = self.buffer[temp_seq]
-                    piggybacked_ack = (self.frame_expected + self.MAX_SEQ) % (self.MAX_SEQ + 1)
-                    frame = Frame("DATA", temp_seq, piggybacked_ack, packet)
+    def _window_full(self) -> bool:
+        """Verifica si la ventana de envío está llena."""
+        if self.send_base <= self.next_seq_num:
+            return (self.next_seq_num - self.send_base) >= self.window_size
+        else:
+            return (self.next_seq_num + self.max_seq_num - self.send_base) >= self.window_size
 
-                    frames_to_send.append({
-                        'frame': frame,
-                        'destination': destination,
-                        'seq': temp_seq,
-                        'use_timeout': (i == 0)  # Solo el primero usa timeout
-                    })
+    def _in_window(self, base: int, ack: int) -> bool:
+        """Verifica si un ACK está dentro del rango de la ventana actual."""
+        if base <= ack < (base + self.window_size) % self.max_seq_num:
+            return True
+        if (base + self.window_size) >= self.max_seq_num:
+            return ack < ((base + self.window_size) % self.max_seq_num) or ack >= base
+        return False
 
-                    temp_seq = self._inc(temp_seq)
-
-            # Avanzar next_frame_to_send
-            self.next_frame_to_send = temp_seq
-
-            if frames_to_send:
-                return {
-                    'action': 'send_multiple_frames',
-                    'frames': frames_to_send
-                }
-
-        return {'action': 'no_action'}
-
-    def _inc(self, k):
-        """Incrementa k circularmente."""
-        return (k + 1) % (self.MAX_SEQ + 1)
-
-    def _between(self, a, b, c):
-        """Retorna True si a <= b < c circularmente."""
-        return ((a <= b) and (b < c)) or ((c < a) and (a <= b)) or ((b < c) and (c < a))
+    def is_bidirectional(self) -> bool:
+        """Indica que este protocolo es bidireccional."""
+        return True
 
     def get_stats(self) -> dict:
         """Retorna estadísticas del protocolo."""
         stats = super().get_stats()
         stats.update({
-            'next_frame_to_send': self.next_frame_to_send,
-            'ack_expected': self.ack_expected,
-            'frame_expected': self.frame_expected,
-            'nbuffered': self.nbuffered,
-            'max_window': self.MAX_SEQ
+            'window_size': self.window_size,
+            'send_base': self.send_base,
+            'next_seq_num': self.next_seq_num,
+            'expected_seq_num': self.expected_seq_num,
+            'sent_frames': self.sent_frames,
+            'received_frames': self.received_frames,
+            'acks_sent': self.acks_sent,
+            'acks_received': self.acks_received,
+            'retransmissions': self.retransmissions,
         })
         return stats
 
     def get_protocol_name(self) -> str:
         """Obtiene el nombre del protocolo."""
         return "Go-Back-N"
-
-    def is_bidirectional(self) -> bool:
-        """Indica si el protocolo es bidireccional."""
-        return True
