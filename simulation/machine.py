@@ -23,17 +23,20 @@ class Machine:
         # Crear protocolo independiente
         self.protocol = protocol_class(machine_id)
 
-        # Crear DataLinkLayer con el protocolo
-        self.data_link_layer = DataLinkLayer(machine_id, self.protocol)
+        # Crear DataLinkLayer con el protocolo y transmission_delay para calcular timeout
+        self.data_link_layer = DataLinkLayer(machine_id, self.protocol, transmission_delay)
 
     def handle_event(self, event: Event, simulator) -> None:
         """Enruta eventos a la capa apropiada."""
         print(f"[Machine-{self.machine_id}] Procesando evento: {event.event_type}")
 
         if event.event_type == EventType.FRAME_ARRIVAL:
-            # Frame válido -> DataLinkLayer maneja
+            # Frame válido (SIN ERRORES) -> DataLinkLayer maneja
             self.data_link_layer.handle_frame_arrival(event.data, simulator)
 
+        elif event.event_type == EventType.CKSUM_ERR:
+            # Frame CON ERRORES -> Protocolo maneja corrupción
+            self.data_link_layer.handle_frame_corruption(event.data, simulator)
 
         elif event.event_type == EventType.NETWORK_LAYER_READY:
             # NetworkLayer tiene datos -> coordinar con DataLinkLayer
@@ -42,7 +45,7 @@ class Machine:
 
         elif event.event_type == "DELIVER_PACKET":
             # Entregar paquete a NetworkLayer
-            self.network_layer.deliver_packet(event.data)
+            self.network_layer.deliver_packet(event.data, simulator)
 
         elif event.event_type == "SEND_FRAME":
             # Enviar frame a través de PhysicalLayer (directo, sin double delay)
@@ -50,9 +53,15 @@ class Machine:
             self.physical_layer.send_frame(frame_data['frame'], frame_data['destination'], simulator)
 
         elif event.event_type == EventType.TIMEOUT:
-            # Timeout del protocolo -> delegar al protocolo via DataLinkLayer
-            response = self.protocol.handle_timeout(simulator)
-            self.data_link_layer._execute_protocol_response(response, simulator)
+            # Timeout del protocolo -> verificar si es válido
+            timeout_id = event.data.get('timeout_id') if event.data else None
+
+            # Solo procesar si el timeout es el activo actual
+            if timeout_id == self.data_link_layer.active_timeout_id:
+                response = self.protocol.handle_timeout(simulator)
+                self.data_link_layer._execute_protocol_response(response, simulator)
+            else:
+                print(f"[Machine-{self.machine_id}] Timeout obsoleto #{timeout_id} ignorado (activo: #{self.data_link_layer.active_timeout_id})")
 
         else:
             print(f"[Machine-{self.machine_id}] Evento no reconocido: {event.event_type}")

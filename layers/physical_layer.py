@@ -31,16 +31,34 @@ class PhysicalLayer:
         self.frames_sent += 1
         print(f"  [PhysicalLayer-{self.machine_id}] Enviando {frame} hacia {destination_id}")
 
-        # Simula corrupción según tasa de errores (PhysicalLayer solo marca)
-        if random.random() < self.error_rate:
-            frame.corrupted_by_physical = True
+        # Simula corrupción según tasa de errores
+        is_corrupted = random.random() < self.error_rate
+        if is_corrupted:
             print(f"  [PhysicalLayer-{self.machine_id}] ¡Frame corrupto durante transmisión!")
+
+        # Notificar GUI si existe callback
+        if hasattr(simulator, 'gui_callback') and simulator.gui_callback:
+            # Marcar frame como corrupto para la animación visual
+            if is_corrupted:
+                frame.corrupted_by_physical = True
+
+            simulator.gui_callback('packet_sent', {
+                'frame': frame,
+                'from': self.machine_id,
+                'to': destination_id,
+                'duration': self.transmission_delay
+            })
 
         # Calcula tiempo de llegada con retardo
         arrival_time = simulator.get_current_time() + self.transmission_delay
 
-        # Siempre envía como FRAME_ARRIVAL - DataLinkLayer verificará checksum
-        event = Event(EventType.FRAME_ARRIVAL, arrival_time, destination_id, frame)
+        # Generar evento según si hay error o no (según especificación)
+        if is_corrupted:
+            # Frame con errores -> evento CKSUM_ERR
+            event = Event(EventType.CKSUM_ERR, arrival_time, destination_id, frame)
+        else:
+            # Frame sin errores -> evento FRAME_ARRIVAL
+            event = Event(EventType.FRAME_ARRIVAL, arrival_time, destination_id, frame)
 
         simulator.schedule_event(event)
 

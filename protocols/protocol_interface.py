@@ -88,8 +88,17 @@ class ProtocolInterface(ABC):
     def get_protocol_name(self) -> str:
         """
         Obtiene el nombre del protocolo.
-        
+
         Returns:
             Nombre del protocolo
         """
         pass
+
+    def is_bidirectional(self) -> bool:
+        """
+        Indica si el protocolo soporta comunicación bidireccional.
+
+        Returns:
+            True si el protocolo es bidireccional, False si es unidireccional
+        """
+        return False

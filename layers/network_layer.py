@@ -26,10 +26,17 @@ class NetworkLayer:
             return packet, destination
         return None, None
 
-    def deliver_packet(self, packet: Packet):
+    def deliver_packet(self, packet: Packet, simulator=None):
         # Entrega el paquete recibido a la aplicación
         self.received_packets.append(packet)
         print(f"  [NetworkLayer-{self.machine_id}] Entregado a aplicación: {packet}")
+
+        # Notificar GUI si existe callback
+        if simulator and hasattr(simulator, 'gui_callback') and simulator.gui_callback:
+            simulator.gui_callback('packet_delivered', {
+                'packet': packet,
+                'machine_id': self.machine_id
+            })
 
     def get_stats(self):
         # Retorna estadísticas de envío y recepción

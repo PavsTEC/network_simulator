@@ -4,12 +4,13 @@ from models.events import Event, EventType
 
 
 class Simulator:
-    def __init__(self):
+    def __init__(self, gui_callback=None):
         self.event_scheduler = EventScheduler()  # Programador de eventos
         self._machines = {}  # Máquinas registradas
         self._current_time = 0.0  # Tiempo actual de simulación
         self._running = False  # Estado de ejecución
         self._paused = False  # Estado de pausa global
+        self.gui_callback = gui_callback  # Callback para actualizar GUI
 
 
         print("[Simulator] Simulador inicializado")
@@ -23,8 +24,9 @@ class Simulator:
 
     def schedule_event(self, event: Event) -> None:
         """Programa un evento en la cola."""
-        if not self._paused:
-            self.event_scheduler.schedule_event(event)
+        # Siempre programar eventos, incluso si está pausado
+        # La pausa solo afecta el procesamiento, no la programación
+        self.event_scheduler.schedule_event(event)
 
     def get_current_time(self) -> float:
         """Retorna el tiempo actual de simulación."""
@@ -69,13 +71,23 @@ class Simulator:
     # Funcionalidad de pausa
     def pause_simulation(self) -> None:
         """Pausa toda la simulación."""
-        self._paused = True
-        print("[Simulator] Simulación pausada")
+        if not self._paused:
+            self._paused = True
+            print("\n⏸️  [Simulator] Simulación PAUSADA - Los eventos en tránsito se mantendrán")
+        else:
+            print("\n⚠️  [Simulator] La simulación ya está pausada")
 
     def resume_simulation(self) -> None:
         """Reanuda la simulación."""
-        self._paused = False
-        print("[Simulator] Simulación reanudada")
+        if self._paused:
+            self._paused = False
+            print("\n▶️  [Simulator] Simulación REANUDADA - Procesando eventos...")
+        else:
+            print("\n⚠️  [Simulator] La simulación no está pausada")
+
+    def is_paused(self) -> bool:
+        """Retorna si la simulación está pausada."""
+        return self._paused
 
     def pause_machine(self, machine_id: str) -> bool:
         """Pausa una máquina específica."""
@@ -124,14 +136,14 @@ class Simulator:
             print("[Simulator] Simulación no iniciada. Llama start_simulation() primero.")
             return
 
+        # Si está pausada, no procesar eventos
+        if self._paused:
+            return
+
         event_count = 0
 
         # Procesa todos los eventos pendientes
-        while self._running and self.event_scheduler.has_events():
-            if self._paused:
-                print("[Simulator] Simulación pausada - esperando...")
-                continue
-
+        while self._running and self.event_scheduler.has_events() and not self._paused:
             event = self.event_scheduler.get_next_event()
             if not event:
                 break
@@ -150,6 +162,40 @@ class Simulator:
 
         if event_count > 0:
             print(f"[Simulator] Procesados {event_count} eventos")
+
+    def run_simulation_step(self, real_time: float) -> None:
+        """
+        Procesa eventos cuyo tiempo haya llegado según tiempo real.
+
+        Args:
+            real_time: Tiempo real transcurrido desde el inicio
+        """
+        if not self._running or self._paused:
+            return
+
+        event_count = 0
+
+        # Procesa eventos cuyo timestamp <= real_time
+        while self._running and self.event_scheduler.has_events() and not self._paused:
+            event = self.event_scheduler.peek_next_event()
+            if not event:
+                break
+
+            # Solo procesar si el tiempo del evento ya llegó
+            if event.timestamp > real_time:
+                break
+
+            # Extraer y procesar el evento
+            event = self.event_scheduler.get_next_event()
+            self._current_time = real_time  # Usar tiempo real
+            event_count += 1
+
+            # Entrega evento a la máquina correspondiente
+            if event.machine_id in self._machines:
+                machine = self._machines[event.machine_id]
+                machine.handle_event(event, self)
+            else:
+                print(f"[ERROR] Máquina {event.machine_id} no encontrada")
 
     def stop_simulation(self) -> None:
         """Detiene la simulación."""
